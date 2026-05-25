@@ -32,8 +32,6 @@ void setup() {
     drone.begin();
     imu.begin();
     flight.begin();
-    Serial.printf("[Battery] level=%d charging=%d\n",
-                  kBoard.getBatteryLevel(), (int)kBoard.isCharging());
 }
 
 void loop() {
