@@ -16,8 +16,10 @@ namespace Rgb565 {
 
 // Board lifecycle
 struct BoardHal {
-    void (*begin)  ();
-    void (*update) ();
+    void (*begin)           ();
+    void (*update)          ();
+    int  (*getBatteryLevel) ();   // 0/25/50/75/100 in %, or -1 if not available
+    bool (*isCharging)      ();
 };
 
 // Display surface — all setup (brightness, rotation, text size) is done in begin()

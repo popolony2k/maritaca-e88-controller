@@ -69,7 +69,8 @@ void Display::begin() {
 }
 
 void Display::update(bool wifiConnected, FlightState flightState,
-                     const DroneState& drone, const ImuData& imu, bool appModeOk) {
+                     const DroneState& drone, const ImuData& imu,
+                     int batteryLevel, bool charging) {
     if (_needsFullRedraw) {
         _hal.fillScreen(Rgb565::Black);
         label(THR_LBL_X, THR_LBL_Y, "THR");
@@ -79,11 +80,12 @@ void Display::update(bool wifiConnected, FlightState flightState,
         _needsFullRedraw = false;
     }
 
-    drawStatusBar(wifiConnected, flightState, appModeOk);
+    drawStatusBar(wifiConnected, flightState, batteryLevel, charging);
     drawControlBars(drone);
 }
 
-void Display::drawStatusBar(bool wifiConnected, FlightState flightState, bool appModeOk) {
+void Display::drawStatusBar(bool wifiConnected, FlightState flightState,
+                             int batteryLevel, bool charging) {
     _hal.fillRect(0, Y_STATUS, W, 12, Rgb565::Black);
 
     _hal.setTextColor(wifiConnected ? Rgb565::Green : Rgb565::Red, Rgb565::Black);
@@ -92,8 +94,24 @@ void Display::drawStatusBar(bool wifiConnected, FlightState flightState, bool ap
     _hal.setTextColor(stateColor(flightState), Rgb565::Black);
     _hal.drawString(flightStateName(flightState), 34, Y_STATUS);
 
-    _hal.setTextColor(appModeOk ? Rgb565::Green : Rgb565::DarkGrey, Rgb565::Black);
-    _hal.drawString("A", W - 8, Y_STATUS);
+    char bat[5];
+    uint16_t batColor;
+    if (batteryLevel < 0) {
+        if (charging) {
+            strcpy(bat, "CHG");
+            batColor = Rgb565::Yellow;
+        } else {
+            strcpy(bat, "---");
+            batColor = Rgb565::DarkGrey;
+        }
+    } else {
+        snprintf(bat, sizeof(bat), "%d%%", batteryLevel);
+        batColor = charging          ? Rgb565::Yellow :
+                   batteryLevel >= 75 ? Rgb565::Green  :
+                   batteryLevel >= 25 ? Rgb565::Yellow : Rgb565::Red;
+    }
+    _hal.setTextColor(batColor, Rgb565::Black);
+    _hal.drawString(bat, 96, Y_STATUS);
 }
 
 void Display::drawControlBars(const DroneState& drone) {

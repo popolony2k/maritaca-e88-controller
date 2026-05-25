@@ -10,10 +10,12 @@ public:
     explicit Display(const DisplayHal& hal);
     void begin();
     void update(bool wifiConnected, FlightState flightState,
-                const DroneState& drone, const ImuData& imu, bool appModeOk);
+                const DroneState& drone, const ImuData& imu,
+                int batteryLevel, bool charging);
 
 private:
-    void drawStatusBar(bool wifiConnected, FlightState flightState, bool appModeOk);
+    void drawStatusBar(bool wifiConnected, FlightState flightState,
+                       int batteryLevel, bool charging);
     void drawControlBars(const DroneState& drone);
     void drawImu(const ImuData& imu);
     void label(int x, int y, const char* txt, uint16_t color = Rgb565::DarkGrey);

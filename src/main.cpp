@@ -32,6 +32,8 @@ void setup() {
     drone.begin();
     imu.begin();
     flight.begin();
+    Serial.printf("[Battery] level=%d charging=%d\n",
+                  kBoard.getBatteryLevel(), (int)kBoard.isCharging());
 }
 
 void loop() {
@@ -58,6 +60,7 @@ void loop() {
     if (now - _lastDisplayMs >= DISPLAY_INTERVAL_MS) {
         _lastDisplayMs = now;
         display.update(wifi.isConnected(), flight.state(),
-                       drone.state(), imu.data(), drone.appModeOk());
+                       drone.state(), imu.data(),
+                       kBoard.getBatteryLevel(), kBoard.isCharging());
     }
 }

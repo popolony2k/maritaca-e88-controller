@@ -13,8 +13,10 @@ static constexpr uint8_t ROTATION_180 = 2;
 static constexpr uint8_t ROTATION_270 = 3;
 
 const BoardHal kBoard {
-    .begin  = [] { auto cfg = M5.config(); M5.begin(cfg); },
-    .update = [] { M5.update(); },
+    .begin           = [] { auto cfg = M5.config(); M5.begin(cfg); },
+    .update          = [] { M5.update(); },
+    .getBatteryLevel = [] { return (int)M5.Power.getBatteryLevel(); },
+    .isCharging      = [] { return (bool)M5.Power.isCharging(); },
 };
 
 const DisplayHal kDisplay {
