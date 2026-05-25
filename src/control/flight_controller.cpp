@@ -110,6 +110,22 @@ void FlightController::runState(const ImuData& imu) {
             } else {
                 _deps.drone.setIdle();
             }
+
+            // Warn if throttle has been at zero for a sustained period —
+            // drone may have auto-landed. No state change; press button to reset.
+            if (cs.active && cs.throttle <= LOW_THROTTLE_THRESHOLD) {
+                if (_lowThrottleStartMs == 0) {
+                    _lowThrottleStartMs = millis();
+                    _lowThrottleWarned  = false;
+                } else if (!_lowThrottleWarned &&
+                           millis() - _lowThrottleStartMs >= LOW_THROTTLE_WARN_MS) {
+                    Serial.println("[Flight] WARNING: throttle at zero for 3s — drone may have auto-landed. Press button to reset.");
+                    _lowThrottleWarned = true;
+                }
+            } else {
+                _lowThrottleStartMs = 0;
+                _lowThrottleWarned  = false;
+            }
             break;
         }
 
