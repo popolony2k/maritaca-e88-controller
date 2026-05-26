@@ -20,17 +20,58 @@ static uint32_t _lastDisplayMs = 0;
 static constexpr uint32_t DISPLAY_INTERVAL_MS = 100;  // 10 Hz
 static bool _prevWifiConnected = false;
 
+static constexpr uint32_t MODE_SELECT_MS = 3000;
+
+static void runModeSelection() {
+    OperationMode sel       = OperationMode::BluetoothControl;  // default
+    uint32_t      selectStart = millis();
+    uint32_t      lastDrawMs  = 0;
+
+    while (true) {
+        kBoard.update();
+
+        if (kButton.wasReleased()) {
+            sel = (sel == OperationMode::BluetoothControl)
+                  ? OperationMode::AccelControl
+                  : OperationMode::BluetoothControl;
+            selectStart = millis();  // reset timer on selection change
+        }
+
+        uint32_t elapsed  = millis() - selectStart;
+        int      secsLeft = (int)((MODE_SELECT_MS - elapsed) / 1000) + 1;
+        if (secsLeft > 3) secsLeft = 3;
+        if (secsLeft < 0) secsLeft = 0;
+
+        uint32_t now = millis();
+        if (now - lastDrawMs >= 100) {
+            lastDrawMs = now;
+            display.drawModeSelect(sel, secsLeft);
+        }
+
+        if (elapsed >= MODE_SELECT_MS) break;
+    }
+
+    modeManager.setMode(sel);
+    Serial.printf("[Boot] Mode selected: %s\n",
+                  sel == OperationMode::BluetoothControl ? "BT GAMEPAD" : "ACCEL TILT");
+}
+
 void setup() {
     kBoard.begin();
 
     Serial.begin(115200);
-    Serial.setTxTimeoutMs(0);  // HWCDC: don't stall if monitor not attached
+    Serial.setTxTimeoutMs(0);
     Serial.println("[Boot] setup start");
 
     display.begin();
+
+    runModeSelection();
+
     wifi.begin(DRONE_SSID);
     drone.begin();
     imu.begin();
+
+    flight.setMode(modeManager.current());
     flight.begin();
 }
 
@@ -46,9 +87,7 @@ void loop() {
     }
     _prevWifiConnected = wifiNow;
 
-    if (modeManager.current() == OperationMode::AccelControl) {
-        flight.update(imu.data(), wifi.isConnected());
-    }
+    flight.update(imu.data(), wifi.isConnected());
 
     if (wifi.isConnected()) {
         drone.update();

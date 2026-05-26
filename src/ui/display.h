@@ -4,6 +4,7 @@
 #include "../comm/drone_protocol.h"
 #include "../imu/accelerometer.h"
 #include "../control/flight_controller.h"
+#include "../control/operation_mode.h"
 
 class Display {
 public:
@@ -12,6 +13,7 @@ public:
     void update(bool wifiConnected, FlightState flightState,
                 const DroneState& drone, const ImuData& imu,
                 int batteryLevel, bool charging);
+    void drawModeSelect(OperationMode selected, int secondsLeft);
 
 private:
     void drawStatusBar(bool wifiConnected, FlightState flightState,
@@ -23,5 +25,6 @@ private:
     void drawBarV(int x, int y, int w, int h, uint8_t value, uint16_t color);
 
     const DisplayHal& _hal;
-    bool _needsFullRedraw = true;
+    bool _needsFullRedraw    = true;
+    bool _modeSelectReady    = false;
 };

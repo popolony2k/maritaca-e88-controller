@@ -52,7 +52,6 @@ void FlightController::handleButton(bool wifiOk) {
     uint32_t now     = millis();
     uint32_t elapsed = now - _stateEnteredMs;
 
-    // Track raw button down state to pause click-window expiry while held
     if (_deps.button.wasPressed()) _buttonDown = true;
 
     // Hold detection — Flying only, after lockout
@@ -60,7 +59,7 @@ void FlightController::handleButton(bool wifiOk) {
         elapsed >= ACCEL_LOCKOUT_MS &&
         _deps.button.pressedFor(HOLD_THRESHOLD_MS) &&
         !_btnIsHold) {
-        _btnHoldIsDown = (_clickCount == 1); // tap+hold = down; plain hold = up
+        _btnHoldIsDown = (_clickCount == 1);
         _btnIsHold     = true;
         _clickCount    = 0;
         Serial.printf("[Flight] Throttle hold -> %s\n",
@@ -73,7 +72,6 @@ void FlightController::handleButton(bool wifiOk) {
             _btnIsHold = false;
             return;
         }
-        // Quick tap: count it
         _clickCount++;
         _lastReleaseMs = now;
         if (_clickCount == 3) {
@@ -84,7 +82,6 @@ void FlightController::handleButton(bool wifiOk) {
         }
     }
 
-    // Click window expiry — only evaluated while button is up
     if (_clickCount > 0 && !_buttonDown &&
         (now - _lastReleaseMs) >= DOUBLE_CLICK_MS) {
         uint8_t count = _clickCount;

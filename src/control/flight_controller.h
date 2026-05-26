@@ -1,6 +1,7 @@
 #pragma once
 #include <Arduino.h>
 #include "accel_controller.h"
+#include "operation_mode.h"
 #include "../comm/drone_protocol.h"
 #include "../imu/accelerometer.h"
 #include "../hal/hal.h"
@@ -25,6 +26,7 @@ class FlightController {
 public:
     explicit FlightController(FlightDeps deps);
     void begin();
+    void setMode(OperationMode m) { _mode = m; }
 
     void update(const ImuData& imu, bool wifiOk);
 
@@ -37,16 +39,17 @@ private:
     void runState(const ImuData& imu);
 
     FlightDeps      _deps;
+    OperationMode   _mode           = OperationMode::BluetoothControl;
     FlightState     _state          = FlightState::Idle;
     uint32_t        _stateEnteredMs = 0;
     bool            _stateFirstFrame = true;
 
     // Button gesture state
-    uint8_t         _clickCount     = 0;    // consecutive quick taps in current window
+    uint8_t         _clickCount     = 0;
     uint32_t        _lastReleaseMs  = 0;
     bool            _buttonDown     = false;
     bool            _btnIsHold      = false;
-    bool            _btnHoldIsDown  = false; // true = throttle down hold
+    bool            _btnHoldIsDown  = false;
     bool            _yawEnabled     = false;
 
     AccelController _accel;
@@ -58,5 +61,5 @@ private:
     static constexpr uint32_t TAKEOFF_DURATION_MS =  500;
     static constexpr uint32_t ACCEL_LOCKOUT_MS    = 2000;
     static constexpr uint32_t LANDING_DURATION_MS = 2000;
-    static constexpr float    THROTTLE_HOLD_RATE  =  1.0f; // units/frame while held
+    static constexpr float    THROTTLE_HOLD_RATE  =  1.0f;
 };

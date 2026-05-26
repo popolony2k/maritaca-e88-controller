@@ -128,3 +128,51 @@ void Display::drawControlBars(const DroneState& drone) {
 void Display::drawImu(const ImuData& imu) {
     (void)imu;  // reserved for future use
 }
+
+void Display::drawModeSelect(OperationMode selected, int secondsLeft) {
+    static constexpr int W         = 128;
+    static constexpr int OPT_H     = 18;
+    static constexpr int Y_TITLE   =   5;
+    static constexpr int Y_OPT1    =  28;
+    static constexpr int Y_OPT2    =  52;
+    static constexpr int Y_AUTO    =  88;
+    static constexpr int Y_BAR     = 108;
+    static constexpr int BAR_H     =  10;
+
+    if (!_modeSelectReady) {
+        _hal.fillScreen(Rgb565::Black);
+        _hal.setTextColor(Rgb565::White, Rgb565::Black);
+        _hal.drawString("-- SELECT MODE --", 4, Y_TITLE);
+        _modeSelectReady  = true;
+        _needsFullRedraw  = true;  // ensure flight HUD redraws when mode starts
+    }
+
+    // Option 1: BT GAMEPAD
+    bool btSelected = (selected == OperationMode::BluetoothControl);
+    _hal.fillRect(0, Y_OPT1, W, OPT_H, btSelected ? Rgb565::Navy : Rgb565::Black);
+    _hal.setTextColor(btSelected ? Rgb565::White : Rgb565::DarkGrey,
+                      btSelected ? Rgb565::Navy  : Rgb565::Black);
+    _hal.drawString(btSelected ? "> BT GAMEPAD" : "  BT GAMEPAD", 4, Y_OPT1 + 4);
+
+    // Option 2: ACCEL TILT
+    bool acSelected = (selected == OperationMode::AccelControl);
+    _hal.fillRect(0, Y_OPT2, W, OPT_H, acSelected ? Rgb565::Navy : Rgb565::Black);
+    _hal.setTextColor(acSelected ? Rgb565::White : Rgb565::DarkGrey,
+                      acSelected ? Rgb565::Navy  : Rgb565::Black);
+    _hal.drawString(acSelected ? "> ACCEL TILT" : "  ACCEL TILT", 4, Y_OPT2 + 4);
+
+    // Countdown text
+    char buf[16];
+    snprintf(buf, sizeof(buf), "Auto in: %ds", secondsLeft);
+    _hal.fillRect(0, Y_AUTO, W, 12, Rgb565::Black);
+    _hal.setTextColor(Rgb565::Yellow, Rgb565::Black);
+    _hal.drawString(buf, 20, Y_AUTO);
+
+    // Countdown bar — depletes right to left
+    _hal.fillRect(0, Y_BAR, W, BAR_H, Rgb565::Black);
+    _hal.drawRect(1, Y_BAR, W - 2, BAR_H, Rgb565::DarkGrey);
+    int fill = secondsLeft * (W - 4) / 3;
+    if (fill > 0) {
+        _hal.fillRect(2, Y_BAR + 1, fill, BAR_H - 2, Rgb565::Yellow);
+    }
+}

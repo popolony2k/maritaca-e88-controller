@@ -1,14 +1,15 @@
 #pragma once
 
 enum class OperationMode {
-    AccelControl,   // AtomS3 is the sole controller, tilt/accel-driven
-    // MirrorControl,  // future: companion / mirror mode
+    AccelControl,     // AtomS3 tilt/accel-driven
+    BluetoothControl, // BLE gamepad-driven
 };
 
 class OperationModeManager {
 public:
     OperationMode current() const { return _mode; }
+    void setMode(OperationMode m) { _mode = m; }
 
 private:
-    OperationMode _mode = OperationMode::AccelControl;
+    OperationMode _mode = OperationMode::BluetoothControl;
 };
