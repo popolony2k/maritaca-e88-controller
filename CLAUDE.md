@@ -1,4 +1,4 @@
-# Arduino + Claude Development Context — atoms3-e88-controller
+# Arduino + Claude Development Context — maritaca-e88-controller
 
 This project uses **VS Code + PlatformIO + Claude Code** to build a custom WiFi controller for Eachine E88 / E58 toy drones, running on an M5Stack AtomS3.
 
@@ -17,10 +17,11 @@ The AtomS3 connects to the drone's AP, sends throttle / roll / pitch / yaw packe
 | Item | Detail |
 |---|---|
 | **Board** | M5Stack AtomS3 (ESP32-S3, 240 MHz, 8 MB Flash, 2 MB PSRAM) |
-| **Display** | Built-in 0.85" 128×128 LCD, GC9107 driver, SPI |
-| **Input** | Built-in button (GPIO 41) |
+| **Display** | Built-in 0.85" 128×128 LCD, GC9107 driver, SPI — rotated 270° in firmware |
+| **Input** | Built-in **screen/face button** = BtnA (GPIO 41). Side button = hardware reset — do NOT use for flight. Say "press the screen." |
 | **LED** | Built-in RGB LED (via M5Unified) |
 | **Communication** | WiFi 2.4 GHz (ESP32-S3 built-in) — connects to drone AP |
+| **Power base** | M5Stack Atomic Battery Base — IP5306 power IC at I2C 0x75 |
 | **Target drones** | Eachine E88, E58 (same Eachine UDP protocol family) |
 | **Power** | USB-C |
 
@@ -50,29 +51,67 @@ lib_deps =
 ## Coding Conventions
 
 - `#include <Arduino.h>` at the top of every `.cpp` file.
-- `#include <M5Unified.h>` for display, button, and LED access.
+- `#include <M5Unified.h>` only in `src/hal/m5atoms3.cpp` — nowhere else.
 - Non-blocking patterns with `millis()` — no `delay()` in the main loop.
-- `Serial.begin(115200)` as default baud rate.
-- ESP32-S3 ADC range 0–4095; use `analogReadResolution(12)` if reading analog pins.
-- Hardware abstractions in their own `.h` / `.cpp` files, not all in `main.cpp`.
+- `Serial.begin(115200)` as default baud rate; `Serial.setTxTimeoutMs(0)` to avoid stalling on HWCDC.
+- Hardware abstractions use the HAL pattern: function-pointer structs with non-capturing lambdas (zero runtime overhead, decay to raw function pointers at compile time).
 - Libraries declared in `platformio.ini` under `lib_deps`.
+
+### HAL pattern (established)
+
+```cpp
+// hal.h — pure interface, no M5 dependency
+struct BoardHal {
+    void (*begin)           ();
+    void (*update)          ();
+    int  (*getBatteryLevel) ();   // 0/25/50/75/100 in %, or -1
+    bool (*isCharging)      ();
+};
+
+// m5atoms3.cpp — only file that includes M5Unified.h
+const BoardHal kBoard {
+    .begin           = [] { auto cfg = M5.config(); M5.begin(cfg); },
+    .update          = [] { M5.update(); },
+    .getBatteryLevel = [] { return ip5306BatteryLevel(); },
+    .isCharging      = [] { return ip5306IsCharging(); },
+};
+```
+
+### IP5306 battery IC (Atomic Battery Base)
+
+Direct I2C read via `M5.In_I2C.readRegister8()` — **do not use raw Wire calls**, they block the loop when the device doesn't respond on default pins.
+
+```cpp
+static constexpr uint8_t  IP5306_ADDR     = 0x75;
+static constexpr uint8_t  IP5306_REG_STA0 = 0x70;  // bit 3: charging
+static constexpr uint8_t  IP5306_REG_STA1 = 0x78;  // bits[2:1]: 00=25% 01=50% 10=75% 11=100%
+static constexpr uint32_t IP5306_I2C_FREQ = 400000;
+```
+
+Level register only updates at power-on or physical button press — it is a snapshot, not live.
+
+### Display
+
+- LovyanGFX rotation values: 0=0°, 1=90°CW, 2=180°, 3=270°CW — no library constants, use integers.
+- Display is rotated 270° (`ROTATION_270 = 3`), screen is 128×128.
+- Display is a pure renderer — receives values, does not fetch data from sources.
 
 ### M5Unified display quick reference
 
 ```cpp
 M5.Display.fillScreen(TFT_NAVY);
-M5.Display.setTextDatum(MC_DATUM);      // middle-center
+M5.Display.setTextDatum(MC_DATUM);
 M5.Display.setTextColor(TFT_WHITE, TFT_NAVY);
 M5.Display.setTextSize(1);
 M5.Display.drawString("text", x, y);
-M5.Display.setRotation(2);              // USB-C at bottom
+M5.Display.setRotation(3);  // 270° — USB-C on right
 ```
 
 ### Button
 
 ```cpp
 M5.update();                // call every loop()
-if (M5.BtnA.wasPressed()) { ... }
+if (M5.BtnA.wasReleased()) { ... }  // project uses wasReleased, not wasPressed
 ```
 
 ---
@@ -80,17 +119,83 @@ if (M5.BtnA.wasPressed()) { ... }
 ## Project Structure
 
 ```
-atoms3-e88-controller/
+maritaca-e88-controller/
 ├── src/
-│   └── main.cpp            # entry point
-├── include/                # shared headers
-├── lib/                    # local libraries
-├── test/                   # PlatformIO unit tests
+│   ├── main.cpp
+│   ├── hal/
+│   │   ├── hal.h               # HAL structs (BoardHal, DisplayHal, ImuHal, ButtonHal)
+│   │   ├── m5atoms3.h          # extern declarations: kBoard, kDisplay, kImu, kButton
+│   │   └── m5atoms3.cpp        # only file that includes M5Unified.h
+│   ├── imu/
+│   │   ├── accelerometer.h/cpp # ImuData struct, Accelerometer class
+│   ├── comm/
+│   │   ├── drone_protocol.h/cpp
+│   │   └── wifi_manager.h/cpp
+│   ├── control/
+│   │   ├── accel_controller.h/cpp  # tilt→roll/yaw + pitch→throttle mapping
+│   │   ├── flight_controller.h/cpp # state machine: Idle→Arming→Flying→Landing
+│   │   └── operation_mode.h/cpp
+│   └── ui/
+│       └── display.h/cpp
+├── include/
+├── lib/
+├── test/
 ├── doc/
-│   └── vscode/             # reference copies of .vscode config files
+│   └── vscode/
 ├── platformio.ini
 └── CLAUDE.md
 ```
+
+---
+
+## Current Implementation Status (2026-05-26)
+
+### Working
+
+- WiFi connection to drone AP (`WIFI_8K_Wf48702`)
+- App mode activation (`42 76` → port 8080) — drone switches from RF to WiFi control
+- Flight state machine: Idle → Calibrating (1.5 s) → Arming (Unlock + TakeOff) → Flying → Landing/Emergency
+- Accel/tilt control: roll (left/right tilt), yaw (gz gyro rate), throttle (rate-based via pitch axis)
+- Battery level display from IP5306 via direct I2C
+- Display HUD: WiFi status, flight state, roll/pitch/yaw/throttle bars, battery
+
+### Open Issues
+
+1. **Drone rotates on ground before takeoff** — happens with board flat and still; suspected motor hardware fault or low battery. To diagnose: Serial-log `out.yaw` while board is flat — if 0x80 (128) it's hardware, not firmware. If not 0x80, gyro bias is leaking through dead zone → add startup calibration.
+2. **Throttle too sensitive** — small hand movements cause too much altitude change. Parameter tuning has been reverted each time due to concurrent drone hardware issues during test flights. When flight is stable, try: `THROTTLE_DEAD_DEG=12`, `MAX_THROTTLE_DEG=25`, `THROTTLE_RATE_MAX=1.5`.
+3. **Camera FPS quality command** — Android app sends a quality command (30%/60%/100% FPS) captured in PCAP. Need to identify the packet and check drone's default. Send 30% on connect if not default.
+
+---
+
+## Accel Controller Tuning Parameters
+
+All in `src/control/accel_controller.h`:
+
+```cpp
+// Roll / Yaw
+static constexpr float MAX_TILT_DEG   = 20.0f;
+static constexpr float TILT_DEAD_ZONE = 10.0f;
+static constexpr float TILT_EXPO      =  0.5f;
+
+static constexpr float MAX_YAW_RATE   = 30.0f;  // tuned down from 60 — less spin
+static constexpr float YAW_DEAD_ZONE  = 10.0f;
+static constexpr float YAW_EXPO       =  0.4f;  // added for smoother yaw feel
+
+// Throttle (rate-based via pitch axis)
+static constexpr float THROTTLE_DEAD_DEG  =  8.0f;  // needs increase — too sensitive
+static constexpr float MAX_THROTTLE_DEG   = 20.0f;
+static constexpr float THROTTLE_RATE_MAX  =  2.5f;  // units/frame at max tilt
+static constexpr float THROTTLE_INIT      = 128.0f;
+
+// Low-pass filter
+static constexpr float ANGLE_ALPHA    =  0.25f;
+```
+
+**Axis sign conventions:**
+
+- Roll: negated (`-_filteredRoll`) — drone nose faces away from user, so left/right is mirrored
+- Yaw: negated (`-_filteredYaw`) — same reason
+- Pitch: drives throttle accumulator, `out.pitch` is always fixed at 0x80
 
 ---
 
@@ -119,7 +224,7 @@ The physical drone in use is an **E88 clone / WIFI_8K_ variant**, identified by:
 | UDP 40000 | UDP | **Closed** | Standard E58 handshake (not used) |
 | UDP 50000 | UDP | **Closed** | Standard E58 control (not used) |
 | UDP **8090** | UDP | **CONFIRMED OPEN** | **Control channel** — E58-compatible protocol |
-| UDP **8080** | UDP | **Confirmed open** | **MJPEG video stream** (drone → client) |
+| UDP **8080** | UDP | **Confirmed open** | **MJPEG video stream** (drone → client) + app mode switch |
 
 ---
 
