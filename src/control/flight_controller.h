@@ -44,14 +44,10 @@ private:
     bool            _stateFirstFrame  = true;
     AccelController _accel;
 
-    uint32_t        _lowThrottleStartMs = 0;
-    bool            _lowThrottleWarned  = false;
-
     static constexpr uint32_t CALI_DURATION_MS      = 1500;
     static constexpr uint32_t UNLOCK_DURATION_MS    =  500;
     static constexpr uint32_t TAKEOFF_DURATION_MS   =  500;
+    static constexpr uint32_t ACCEL_LOCKOUT_MS      = 2000;
     static constexpr uint32_t LANDING_DURATION_MS   = 2000;
     static constexpr uint32_t LONG_PRESS_MS         = 2000;
-    static constexpr uint32_t LOW_THROTTLE_WARN_MS  = 3000;
-    static constexpr uint8_t  LOW_THROTTLE_THRESHOLD =   10;
 };
