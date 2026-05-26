@@ -26,8 +26,9 @@ private:
     static constexpr float TILT_DEAD_ZONE = 10.0f;
     static constexpr float TILT_EXPO      =  0.5f;
 
-    static constexpr float MAX_YAW_RATE   = 60.0f;
+    static constexpr float MAX_YAW_RATE   = 30.0f;
     static constexpr float YAW_DEAD_ZONE  = 10.0f;
+    static constexpr float YAW_EXPO       =  0.4f;
 
     // ---- Throttle tuning (rate-based via pitch axis) ----------------------
     // Tilt board back  (near edge up)   → throttle increases continuously.

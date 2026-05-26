@@ -62,7 +62,7 @@ void AccelController::update(const ImuData& imu, DroneState& out) {
     // Roll is negated: drone nose faces away from user, so left/right is mirrored.
     out.roll     = mapAxis(-_filteredRoll, MAX_TILT_DEG, TILT_DEAD_ZONE, TILT_EXPO);
     out.pitch    = 0x80;
-    out.yaw      = mapAxis(-_filteredYaw,  MAX_YAW_RATE, YAW_DEAD_ZONE,  0.0f);
+    out.yaw      = mapAxis(-_filteredYaw,  MAX_YAW_RATE, YAW_DEAD_ZONE,  YAW_EXPO);
     out.throttle = (uint8_t)_throttle;
     out.cmd      = DroneCmd::None;
     out.active   = true;
