@@ -25,7 +25,7 @@ static bool _prevWifiConnected = false;
 static constexpr uint32_t MODE_SELECT_MS = 3000;
 
 static void runModeSelection() {
-    OperationMode sel       = OperationMode::AccelControl;  // default
+    OperationMode sel       = OperationMode::BluetoothControl;  // default
     uint32_t      selectStart = millis();
     uint32_t      lastDrawMs  = 0;
 
