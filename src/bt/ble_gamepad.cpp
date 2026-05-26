@@ -44,6 +44,7 @@ class HidScanCallback : public BLEAdvertisedDeviceCallbacks {
 class HidClientCallbacks : public BLEClientCallbacks {
     void onConnect(BLEClient*) override {
         _connected = true;
+        if (BleGamepad::_instance) BleGamepad::_instance->onConnected();
         Serial.println("[BLE] Gamepad connected");
     }
     void onDisconnect(BLEClient*) override {
@@ -70,6 +71,7 @@ static void notifyCallback(BLERemoteCharacteristic*, uint8_t* data, size_t len, 
 
 void BleGamepad::begin() {
     _instance = this;
+    _status   = BleStatus::Scanning;
     BLEDevice::init("");
     Serial.println("[BLE] Initialized — scanning for HID gamepad (pair 8BitDo with X+Start)");
     startScan();
@@ -85,6 +87,7 @@ void BleGamepad::startScan() {
 }
 
 void BleGamepad::doConnect() {
+    _status = BleStatus::Connecting;
     Serial.printf("[BLE] Connecting to %s...\n",
                   _foundDevice->getAddress().toString().c_str());
 
@@ -135,8 +138,13 @@ void BleGamepad::doConnect() {
     _debugCount = 0;
 }
 
+void BleGamepad::onConnected() {
+    _status = BleStatus::Connected;
+}
+
 void BleGamepad::onDisconnected() {
-    _axes = GamepadAxes{};
+    _axes   = GamepadAxes{};
+    _status = BleStatus::Scanning;
 }
 
 void BleGamepad::update() {
@@ -146,10 +154,11 @@ void BleGamepad::update() {
         doConnect();
     }
 
-    // Restart scan after disconnect
+    // Restart scan after disconnect or failed connect
     if (_doScan && !_connected) {
         _doScan = false;
         _axes   = GamepadAxes{};
+        _status = BleStatus::Scanning;
         startScan();
         Serial.println("[BLE] Scanning...");
     }

@@ -65,7 +65,14 @@ void Display::drawBarV(int x, int y, int w, int h, uint8_t value, uint16_t color
 void Display::begin() {
     _hal.begin();
     _hal.fillScreen(Rgb565::Black);
+    _needsFullRedraw  = true;
+    _modeSelectReady  = false;
+    _btScreenReady    = false;
+}
+
+void Display::markDirty() {
     _needsFullRedraw = true;
+    _btScreenReady   = false;
 }
 
 void Display::update(bool wifiConnected, FlightState flightState,
@@ -127,6 +134,76 @@ void Display::drawControlBars(const DroneState& drone) {
 
 void Display::drawImu(const ImuData& imu) {
     (void)imu;  // reserved for future use
+}
+
+void Display::drawBtStatus(BleStatus status, bool wifiOk, int batteryLevel, bool charging) {
+    static constexpr int W = 128;
+
+    if (!_btScreenReady) {
+        _hal.fillScreen(Rgb565::Black);
+        _hal.setTextColor(Rgb565::White, Rgb565::Black);
+        _hal.drawString("== BT GAMEPAD ==", 4, 8);
+        _btScreenReady = true;
+    }
+
+    // Status text
+    _hal.fillRect(0, 28, W, 16, Rgb565::Black);
+    if (status == BleStatus::Connected) {
+        _hal.setTextColor(Rgb565::Green, Rgb565::Black);
+        _hal.drawString("CONNECTED!", 22, 30);
+    } else if (status == BleStatus::Connecting) {
+        _hal.setTextColor(Rgb565::Yellow, Rgb565::Black);
+        _hal.drawString("CONNECTING...", 10, 30);
+    } else {
+        // Animated SCANNING dots
+        const char* dots[] = { "", ".", "..", "..." };
+        char buf[16];
+        snprintf(buf, sizeof(buf), "SCANNING%s", dots[(millis() / 400) % 4]);
+        _hal.setTextColor(Rgb565::Cyan, Rgb565::Black);
+        _hal.drawString(buf, 10, 30);
+    }
+
+    // Help text
+    _hal.fillRect(0, 52, W, 14, Rgb565::Black);
+    _hal.setTextColor(Rgb565::DarkGrey, Rgb565::Black);
+    if (status == BleStatus::Connected) {
+        _hal.drawString("Dbl-click: arm+fly", 2, 54);
+    } else {
+        _hal.drawString("8BitDo: X + Start", 4, 54);
+    }
+
+    // WiFi status
+    _hal.fillRect(0, 78, W, 12, Rgb565::Black);
+    _hal.setTextColor(wifiOk ? Rgb565::Green : Rgb565::Red, Rgb565::Black);
+    _hal.drawString(wifiOk ? "WiFi OK" : "No WiFi", 0, 80);
+
+    // Battery
+    char bat[6];
+    uint16_t batColor;
+    if (batteryLevel < 0) {
+        strcpy(bat, charging ? "CHG" : "---");
+        batColor = charging ? Rgb565::Yellow : Rgb565::DarkGrey;
+    } else {
+        snprintf(bat, sizeof(bat), "%d%%", batteryLevel);
+        batColor = charging          ? Rgb565::Yellow :
+                   batteryLevel >= 50 ? Rgb565::Green  : Rgb565::Red;
+    }
+    _hal.setTextColor(batColor, Rgb565::Black);
+    _hal.drawString(bat, 90, 80);
+
+    // Animated bar at bottom
+    _hal.fillRect(0, 100, W, 16, Rgb565::Black);
+    _hal.drawRect(1, 102, W - 2, 12, Rgb565::DarkGrey);
+    if (status == BleStatus::Connected) {
+        _hal.fillRect(2, 103, W - 4, 10, Rgb565::Green);
+    } else {
+        // Ping-pong pulse
+        uint32_t t   = (millis() / 12) % 200;
+        int      pos = (t <= 100) ? (int)t : (int)(200 - t);  // 0→100→0
+        int      x   = 2 + pos * (W - 28) / 100;
+        _hal.fillRect(x, 103, 24, 10,
+                      status == BleStatus::Connecting ? Rgb565::Yellow : Rgb565::Cyan);
+    }
 }
 
 void Display::drawModeSelect(OperationMode selected, int secondsLeft) {

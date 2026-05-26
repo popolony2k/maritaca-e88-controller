@@ -22,6 +22,10 @@ static uint32_t _lastDisplayMs = 0;
 static constexpr uint32_t DISPLAY_INTERVAL_MS = 100;  // 10 Hz
 static bool _prevWifiConnected = false;
 
+static uint32_t _btConnectedMs    = 0;
+static bool     _btWasConnected   = false;
+static bool     _prevShowBtScreen = false;
+
 static constexpr uint32_t MODE_SELECT_MS = 3000;
 
 static void runModeSelection() {
@@ -105,11 +109,29 @@ void loop() {
         drone.update();
     }
 
+    bool gpConnected = gamepad.axes().connected;
+    if (gpConnected && !_btWasConnected) _btConnectedMs = millis();
+    _btWasConnected = gpConnected;
+
+    bool showBtScreen = (modeManager.current() == OperationMode::BluetoothControl)
+                        && (flight.state() == FlightState::Idle)
+                        && (!gpConnected || (millis() - _btConnectedMs < 1500));
+
+    if (_prevShowBtScreen && !showBtScreen) display.markDirty();
+    _prevShowBtScreen = showBtScreen;
+
     uint32_t now = millis();
     if (now - _lastDisplayMs >= DISPLAY_INTERVAL_MS) {
         _lastDisplayMs = now;
-        display.update(wifi.isConnected(), flight.state(),
-                       drone.state(), imu.data(),
-                       kBoard.getBatteryLevel(), kBoard.isCharging());
+        if (showBtScreen) {
+            display.drawBtStatus(gamepad.status(),
+                                 wifi.isConnected(),
+                                 kBoard.getBatteryLevel(),
+                                 kBoard.isCharging());
+        } else {
+            display.update(wifi.isConnected(), flight.state(),
+                           drone.state(), imu.data(),
+                           kBoard.getBatteryLevel(), kBoard.isCharging());
+        }
     }
 }
