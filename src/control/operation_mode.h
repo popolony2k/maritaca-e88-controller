@@ -11,5 +11,5 @@ public:
     void setMode(OperationMode m) { _mode = m; }
 
 private:
-    OperationMode _mode = OperationMode::BluetoothControl;
+    OperationMode _mode = OperationMode::AccelControl;
 };

@@ -1,9 +1,11 @@
 #pragma once
 #include <Arduino.h>
 #include "accel_controller.h"
+#include "gamepad_controller.h"
 #include "operation_mode.h"
 #include "../comm/drone_protocol.h"
 #include "../imu/accelerometer.h"
+#include "../bt/gamepad_axes.h"
 #include "../hal/hal.h"
 
 enum class FlightState {
@@ -28,7 +30,7 @@ public:
     void begin();
     void setMode(OperationMode m) { _mode = m; }
 
-    void update(const ImuData& imu, bool wifiOk);
+    void update(const ImuData& imu, const GamepadAxes& gamepad, bool wifiOk);
 
     FlightState state() const { return _state; }
 
@@ -39,20 +41,22 @@ private:
     void runState(const ImuData& imu);
 
     FlightDeps      _deps;
-    OperationMode   _mode           = OperationMode::BluetoothControl;
-    FlightState     _state          = FlightState::Idle;
-    uint32_t        _stateEnteredMs = 0;
+    OperationMode   _mode            = OperationMode::AccelControl;
+    FlightState     _state           = FlightState::Idle;
+    uint32_t        _stateEnteredMs  = 0;
     bool            _stateFirstFrame = true;
 
     // Button gesture state
-    uint8_t         _clickCount     = 0;
-    uint32_t        _lastReleaseMs  = 0;
-    bool            _buttonDown     = false;
-    bool            _btnIsHold      = false;
-    bool            _btnHoldIsDown  = false;
-    bool            _yawEnabled     = false;
+    uint8_t         _clickCount      = 0;
+    uint32_t        _lastReleaseMs   = 0;
+    bool            _buttonDown      = false;
+    bool            _btnIsHold       = false;
+    bool            _btnHoldIsDown   = false;
+    bool            _yawEnabled      = false;
 
-    AccelController _accel;
+    GamepadAxes       _lastGamepadAxes;
+    AccelController   _accel;
+    GamepadController _gamepad;
 
     static constexpr uint32_t DOUBLE_CLICK_MS     =  300;
     static constexpr uint32_t HOLD_THRESHOLD_MS   =  500;

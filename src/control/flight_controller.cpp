@@ -17,13 +17,15 @@ FlightController::FlightController(FlightDeps deps) : _deps(deps) {}
 
 void FlightController::begin() {
     _accel.begin();
+    _gamepad.begin();
     _state           = FlightState::Idle;
     _stateEnteredMs  = millis();
     _stateFirstFrame = true;
     // Do NOT call enterState() — exitAppMode() must not fire at boot.
 }
 
-void FlightController::update(const ImuData& imu, bool wifiOk) {
+void FlightController::update(const ImuData& imu, const GamepadAxes& gamepad, bool wifiOk) {
+    _lastGamepadAxes = gamepad;
     handleButton(wifiOk);
     runState(imu);
 }
@@ -39,6 +41,7 @@ void FlightController::enterState(FlightState s, bool sendModeCmd) {
     _accel.setEnabled(s == FlightState::Flying);
     if (s == FlightState::Flying) {
         _accel.begin();
+        _gamepad.begin();
     }
 
     if (sendModeCmd && s == FlightState::Idle) {
@@ -54,8 +57,9 @@ void FlightController::handleButton(bool wifiOk) {
 
     if (_deps.button.wasPressed()) _buttonDown = true;
 
-    // Hold detection — Flying only, after lockout
-    if (_state == FlightState::Flying &&
+    // Hold detection — AccelControl only, Flying state, after lockout
+    if (_mode == OperationMode::AccelControl &&
+        _state == FlightState::Flying &&
         elapsed >= ACCEL_LOCKOUT_MS &&
         _deps.button.pressedFor(HOLD_THRESHOLD_MS) &&
         !_btnIsHold) {
@@ -141,12 +145,16 @@ void FlightController::runState(const ImuData& imu) {
                 _deps.drone.setControl(0x80, 0x80, 0x80, 0x80, DroneCmd::None);
                 break;
             }
-            if (_btnIsHold) {
-                float delta = _btnHoldIsDown ? -THROTTLE_HOLD_RATE : THROTTLE_HOLD_RATE;
-                _accel.adjustThrottle(delta);
-            }
             DroneState cs;
-            _accel.update(imu, cs);
+            if (_mode == OperationMode::BluetoothControl) {
+                _gamepad.update(_lastGamepadAxes, cs);
+            } else {
+                if (_btnIsHold) {
+                    float delta = _btnHoldIsDown ? -THROTTLE_HOLD_RATE : THROTTLE_HOLD_RATE;
+                    _accel.adjustThrottle(delta);
+                }
+                _accel.update(imu, cs);
+            }
             if (cs.active) {
                 _deps.drone.setControl(cs.roll, cs.pitch, cs.throttle,
                                       _yawEnabled ? cs.yaw : (uint8_t)0x80,

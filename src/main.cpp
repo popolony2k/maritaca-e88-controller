@@ -6,6 +6,7 @@
 #include "comm/drone_protocol.h"
 #include "imu/accelerometer.h"
 #include "ui/display.h"
+#include "bt/ble_gamepad.h"
 
 static constexpr char DRONE_SSID[] = "WIFI_8K_Wf48702";
 
@@ -14,6 +15,7 @@ static WifiManager          wifi;
 static DroneProtocol        drone;
 static Accelerometer        imu;
 static FlightController     flight({ kButton, drone });
+static BleGamepad           gamepad;
 static Display              display(kDisplay);
 
 static uint32_t _lastDisplayMs = 0;
@@ -23,7 +25,7 @@ static bool _prevWifiConnected = false;
 static constexpr uint32_t MODE_SELECT_MS = 3000;
 
 static void runModeSelection() {
-    OperationMode sel       = OperationMode::BluetoothControl;  // default
+    OperationMode sel       = OperationMode::AccelControl;  // default
     uint32_t      selectStart = millis();
     uint32_t      lastDrawMs  = 0;
 
@@ -52,7 +54,7 @@ static void runModeSelection() {
     }
 
     modeManager.setMode(sel);
-    Serial.printf("[Boot] Mode selected: %s\n",
+    Serial.printf("[Boot] Mode: %s\n",
                   sel == OperationMode::BluetoothControl ? "BT GAMEPAD" : "ACCEL TILT");
 }
 
@@ -73,6 +75,10 @@ void setup() {
 
     flight.setMode(modeManager.current());
     flight.begin();
+
+    if (modeManager.current() == OperationMode::BluetoothControl) {
+        gamepad.begin();  // init BLE and start scanning
+    }
 }
 
 void loop() {
@@ -87,7 +93,13 @@ void loop() {
     }
     _prevWifiConnected = wifiNow;
 
-    flight.update(imu.data(), wifi.isConnected());
+    GamepadAxes gpAxes{};
+    if (modeManager.current() == OperationMode::BluetoothControl) {
+        gamepad.update();
+        gpAxes = gamepad.axes();
+    }
+
+    flight.update(imu.data(), gpAxes, wifi.isConnected());
 
     if (wifi.isConnected()) {
         drone.update();
