@@ -40,6 +40,7 @@ struct ImuHal {
 
 // Button input
 struct ButtonHal {
+    bool (*wasPressed)  ();
     bool (*wasReleased) ();
     bool (*pressedFor)  (uint32_t ms);
 };

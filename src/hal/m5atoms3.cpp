@@ -65,6 +65,7 @@ const ImuHal kImu {
 };
 
 const ButtonHal kButton {
+    .wasPressed  = []()            -> bool { return M5.BtnA.wasPressed(); },
     .wasReleased = []()            -> bool { return M5.BtnA.wasReleased(); },
     .pressedFor  = [](uint32_t ms) -> bool { return (bool)M5.BtnA.pressedFor(ms); },
 };

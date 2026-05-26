@@ -8,38 +8,46 @@ public:
     void begin();
     void update(const ImuData& imu, DroneState& out);
 
-    void setEnabled(bool en) { _enabled = en; }
-    bool isEnabled() const   { return _enabled; }
+    void setEnabled(bool en)      { _enabled = en; }
+    bool isEnabled()  const       { return _enabled; }
+
+    void adjustThrottle(float delta);
 
 private:
-    // Maps a signed value through dead zone + expo curve → [0, 254], neutral = 128.
     static uint8_t mapAxis(float value, float maxRange, float deadZone, float expo);
 
     bool  _enabled       = false;
-    float _filteredRoll  = 0.0f;  // low-pass state
+    float _filteredRoll  = 0.0f;
     float _filteredYaw   = 0.0f;
     float _filteredPitch = 0.0f;
     float _throttle      = 128.0f; // persistent throttle level [0, 254]
+    float _currentRoll   = 128.0f; // slew-limited output state
+    float _currentPitch  = 128.0f;
+    float _currentYaw    = 128.0f;
 
-    // ---- Roll / Yaw tuning -----------------------------------------------
+    // ---- Roll tuning -----------------------------------------------
     static constexpr float MAX_TILT_DEG   = 20.0f;
     static constexpr float TILT_DEAD_ZONE = 10.0f;
     static constexpr float TILT_EXPO      =  0.5f;
 
+    // ---- Yaw tuning ------------------------------------------------
     static constexpr float MAX_YAW_RATE   = 120.0f;
-    static constexpr float YAW_DEAD_ZONE  = 20.0f;
-    static constexpr float YAW_EXPO       =  0.5f;
+    static constexpr float YAW_DEAD_ZONE  =  20.0f;
+    static constexpr float YAW_EXPO       =   0.5f;
 
-    // ---- Throttle tuning (rate-based via pitch axis) ----------------------
-    // Tilt board back  (near edge up)   → throttle increases continuously.
-    // Tilt board forward (near edge down) → throttle decreases continuously.
-    // Inside dead zone → throttle holds its current value.
-    // Raise THROTTLE_RATE_MAX if altitude changes feel too slow.
-    static constexpr float THROTTLE_DEAD_DEG  =  8.0f;  // no-change band
-    static constexpr float MAX_THROTTLE_DEG   = 20.0f;  // full-rate deflection
-    static constexpr float THROTTLE_RATE_MAX  =  2.5f;  // units/frame at max tilt
-    static constexpr float THROTTLE_INIT      = 128.0f; // hover-neutral when Flying begins
+    // ---- Pitch (forward/backward) tuning ---------------------------
+    // If forward/backward feels inverted, negate _filteredPitch in update().
+    static constexpr float MAX_PITCH_DEG   = 20.0f;
+    static constexpr float PITCH_DEAD_ZONE = 10.0f;
+    static constexpr float PITCH_EXPO      =  0.5f;
 
-    // ---- Low-pass filter -------------------------------------------------
-    static constexpr float ANGLE_ALPHA    =  0.25f;
+    // ---- Slew rate limiter -----------------------------------------
+    // Max output change per frame (25 Hz). 5 units/frame = ~1s neutral→full.
+    static constexpr float SLEW_RATE       =   3.0f;
+
+    // ---- Throttle --------------------------------------------------
+    static constexpr float THROTTLE_INIT   = 128.0f; // hover-neutral when Flying begins
+
+    // ---- Low-pass filter -------------------------------------------
+    static constexpr float ANGLE_ALPHA     =  0.25f;
 };
