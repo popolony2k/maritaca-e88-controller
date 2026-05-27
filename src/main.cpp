@@ -1,3 +1,18 @@
+/**
+ * @file main.cpp
+ * @brief Application entry point for the maritaca-e88-controller firmware.
+ *
+ * Wires all subsystems together and drives the main loop:
+ *   - Boot: mode-selection screen (3 s countdown; BT GAMEPAD default).
+ *   - Setup: WiFi, drone protocol, IMU, flight controller, optional BLE gamepad.
+ *   - Loop (non-blocking, millis()-driven):
+ *       - Board button polling via kBoard.update()
+ *       - WiFi reconnection and app-mode activation on connect
+ *       - BLE gamepad update (BT mode only)
+ *       - Flight state machine tick
+ *       - Drone UDP packet transmission
+ *       - Display routing: BT status screen or flight HUD at 10 Hz
+ */
 #include <Arduino.h>
 #include "hal/m5atoms3.h"
 #include "control/operation_mode.h"
@@ -8,7 +23,7 @@
 #include "ui/display.h"
 #include "bt/ble_gamepad.h"
 
-static constexpr char DRONE_SSID[] = "WIFI_8K_Wf48702";
+static constexpr char DRONE_SSID[] = "WIFI_8K_Wf48702"; ///< Target drone access point SSID.
 
 static OperationModeManager modeManager;
 static WifiManager          wifi;
@@ -26,8 +41,14 @@ static uint32_t _btConnectedMs    = 0;
 static bool     _btWasConnected   = false;
 static bool     _prevShowBtScreen = false;
 
-static constexpr uint32_t MODE_SELECT_MS = 3000;
+static constexpr uint32_t MODE_SELECT_MS = 3000; ///< Boot menu auto-select timeout (ms).
 
+/**
+ * @brief Block in the boot mode-selection menu until the countdown expires.
+ *
+ * Renders the menu at 10 Hz. A button click cycles the selection and resets
+ * the countdown. Sets the chosen mode on modeManager before returning.
+ */
 static void runModeSelection() {
     OperationMode sel       = OperationMode::BluetoothControl;  // default
     uint32_t      selectStart = millis();

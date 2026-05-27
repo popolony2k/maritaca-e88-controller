@@ -2,41 +2,63 @@
 #include <M5Unified.h>
 #include "m5atoms3.h"
 
-// The only file in the project that includes M5Unified.h.
-// All function pointers are non-capturing lambdas — they decay to raw
-// function pointers at compile time with zero runtime overhead.
+/**
+ * @file m5atoms3.cpp
+ * @brief The only file in the project that includes M5Unified.h.
+ *
+ * All HAL function pointers are non-capturing lambdas that decay to raw
+ * function pointers at compile time, giving zero runtime overhead.
+ */
 
-// LovyanGFX rotation values: 0=0°, 1=90°CW, 2=180°, 3=270°CW.
-static constexpr uint8_t ROTATION_0   = 0;
-static constexpr uint8_t ROTATION_90  = 1;
-static constexpr uint8_t ROTATION_180 = 2;
+/// LovyanGFX rotation constants (0=0°, 1=90°CW, 2=180°, 3=270°CW).
 static constexpr uint8_t ROTATION_270 = 3;
 
-// Direct IP5306 I2C access via M5Unified's internal bus — M5Unified does
-// not expose battery level for the AtomS3 + Atomic Battery Base combination.
-// IP5306 address: 0x75. REG_READ0=0x70 (charging), REG_READ1=0x78 (level).
+/**
+ * @defgroup ip5306 IP5306 Battery IC (Atomic Battery Base)
+ *
+ * Direct I2C access via M5Unified's internal bus. M5Unified does not expose
+ * battery level for the AtomS3 + Atomic Battery Base combination, so we read
+ * the IP5306 registers directly.
+ *
+ * Note: REG_STA1 level only updates at power-on or physical button press —
+ * it is a snapshot, not a live reading.
+ * @{
+ */
 static constexpr uint8_t  IP5306_ADDR     = 0x75;
-static constexpr uint8_t  IP5306_REG_STA0 = 0x70;
-static constexpr uint8_t  IP5306_REG_STA1 = 0x78;
+static constexpr uint8_t  IP5306_REG_STA0 = 0x70; ///< Bit 3: charging flag.
+static constexpr uint8_t  IP5306_REG_STA1 = 0x78; ///< Bits [2:1]: 00=25% 01=50% 10=75% 11=100%.
 static constexpr uint32_t IP5306_I2C_FREQ = 400000;
 
+/**
+ * @brief Read a single register from the IP5306 via M5Unified's I2C bus.
+ * @param reg Register address.
+ * @return Register value, or -1 on bus error.
+ */
 static int ip5306ReadReg(uint8_t reg) {
     return M5.In_I2C.readRegister8(IP5306_ADDR, reg, IP5306_I2C_FREQ);
 }
 
+/**
+ * @brief Read the battery charge level from the IP5306.
+ * @return One of 25, 50, 75, 100 (percent), or -1 if the IC is unreachable.
+ */
 static int ip5306BatteryLevel() {
     int val = ip5306ReadReg(IP5306_REG_STA1);
     if (val < 0) return -1;
-    // bits [2:1]: 00=25%, 01=50%, 10=75%, 11=100%
     static constexpr int levels[] = { 25, 50, 75, 100 };
     return levels[(val >> 1) & 0x03];
 }
 
+/**
+ * @brief Check whether the battery is currently charging.
+ * @return True when VBUS charging current is flowing (bit 3 of REG_STA0).
+ */
 static bool ip5306IsCharging() {
     int val = ip5306ReadReg(IP5306_REG_STA0);
     if (val < 0) return false;
-    return (val & 0x08) != 0;  // bit 3: VBUS charging current flowing
+    return (val & 0x08) != 0;
 }
+/** @} */
 
 const BoardHal kBoard {
     .begin           = [] { auto cfg = M5.config(); M5.begin(cfg); },
