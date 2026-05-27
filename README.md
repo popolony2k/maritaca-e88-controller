@@ -23,7 +23,9 @@ on its built-in 128×128 LCD.
 
 ## Project Goal
 
-Replace the drone's factory RF remote with a tilt-based gesture controller:
+Replace the drone's factory RF remote with a custom controller supporting two modes, selectable at boot:
+
+### Mode 1 — Accel Tilt (AtomS3 as a motion controller)
 
 - **Tilt the AtomS3 left/right** → roll (strafe)
 - **Rotate the board** (gyro Z-rate) → yaw (spin)
@@ -32,6 +34,21 @@ Replace the drone's factory RF remote with a tilt-based gesture controller:
 - **Level** → throttle holds its current value
 - **Short press** (screen button) → start calibration → arm → fly
 - **Long press (2 s)** → emergency stop, return to idle
+
+### Mode 2 — BT Gamepad (8BitDo / BLE HID controller)
+
+- **Left stick X** → roll
+- **Left stick Y** → pitch
+- **Right stick X** → yaw
+- **ZR (hold)** → throttle up continuously
+- **ZL (hold)** → throttle down continuously
+- **Release both triggers** → throttle holds current value
+- **Double-click** (screen button, when connected) → calibrate → arm → fly
+- **Long press (2 s)** → emergency stop, return to idle
+
+### Boot mode selection
+
+On power-on a menu screen appears for 3 seconds.  Pressing the screen button cycles between modes; releasing the button resets the 3-second countdown.  Default is **BT GAMEPAD**.
 
 ---
 
@@ -115,10 +132,10 @@ Packet captures used for reverse engineering are stored in `resources/pcap/`.
 
 | State | Action |
 |---|---|
-| **Idle** | Sends neutral keepalive; awaits button press |
+| **Idle** | Sends neutral keepalive; awaits button press (accel) or double-click (BT) |
 | **Calibrating** | Sends `CaliGyro` + zero throttle for 1.5 s (gyro calibration) |
 | **Arming** | Sends `Unlock` → `TakeOff` command sequence |
-| **Flying** | Accel-driven control at 25 Hz via `AccelController` |
+| **Flying** | Control at 25 Hz via `AccelController` or `GamepadController` depending on mode |
 | **Landing** | Sends `Land` command for 2 s, then returns to Idle |
 | **Emergency** | Sends `EmergStop` once, immediately returns to Idle |
 
@@ -131,7 +148,8 @@ logic never touches M5Unified or Arduino APIs directly.
 
 ```
 src/
-├── main.cpp                    # setup() / loop() — wires all modules together
+├── main.cpp                    # setup() / loop() — wires all modules together;
+│                               #   mode selection at boot, BT screen vs HUD routing
 │
 ├── hal/
 │   ├── hal.h                   # HAL structs: BoardHal, DisplayHal, ImuHal, ButtonHal
@@ -147,17 +165,23 @@ src/
 ├── imu/
 │   └── accelerometer.h/.cpp    # Raw IMU polling at 50 Hz via ImuHal
 │
+├── bt/
+│   ├── gamepad_axes.h          # GamepadAxes struct (normalized axes, no BLE deps)
+│   └── ble_gamepad.h/.cpp      # BLE HID host: scan → connect → notify → parse;
+│                               #   all <BLEDevice.h> includes confined here
+│
 ├── control/
-│   ├── operation_mode.h        # OperationMode enum (AccelControl; future: Mirror)
+│   ├── operation_mode.h        # OperationMode enum: AccelControl / BluetoothControl
 │   ├── flight_controller.h/.cpp# State machine (Idle→Calib→Arming→Flying→Landing)
-│   │                           #   + button handling (short/long press)
-│   └── accel_controller.h/.cpp # Tilt→control mapping: roll/yaw via mapAxis(),
-│                               #   rate-based throttle via pitch axis, EMA filter
+│   │                           #   + button handling; dispatches to correct controller
+│   ├── accel_controller.h/.cpp # Tilt→control mapping: roll/yaw via mapAxis(),
+│   │                           #   rate-based throttle via pitch axis, EMA filter
+│   └── gamepad_controller.h/.cpp # GamepadAxes→DroneState: dead zone, expo, slew rate,
+│                               #   rate-based throttle from ZL/ZR
 │
 └── ui/
     ├── display.h               # Display class declaration
-    └── display.cpp             # 128×128 HUD: vertical throttle bar (left) +
-                                #   horizontal ROL/YAW/PCH bars (right), status bar
+    └── display.cpp             # Mode-select screen, BT status screen, flight HUD
 ```
 
 ### HAL pattern
@@ -178,11 +202,45 @@ and remain fully testable without hardware.
 
 ---
 
-## Display Layout (128×128, rotated 270°)
+## Display Screens (128×128, rotated 270°)
+
+### Boot — mode selection
 
 ```
 ┌──────────────────────────────┐
-│ WiFi   [STATE]            A  │  ← status bar (WiFi / flight state / app mode)
+│     -- SELECT MODE --        │
+│                              │
+│ ░░░░░░░░░░░░░░░░░░░░░░░░░░░ │  ← highlighted option (navy bg)
+│ > BT GAMEPAD                 │
+│ ░░░░░░░░░░░░░░░░░░░░░░░░░░░ │
+│   ACCEL TILT                 │
+│                              │
+│      Auto in: 3s             │
+│ ████████████████████░░░░░░░░ │  ← countdown bar (depletes right→left)
+└──────────────────────────────┘
+```
+
+### BT Gamepad — waiting for controller
+
+```
+┌──────────────────────────────┐
+│    == BT GAMEPAD ==          │
+│                              │
+│  SCANNING...                 │  ← cyan; animated dots; yellow=CONNECTING; green=CONNECTED
+│                              │
+│  8BitDo: X + Start           │  ← pairing hint (or "Dbl-click: arm+fly" when connected)
+│                              │
+│  WiFi OK              75%    │
+│                              │
+│ ░░░░░[████]░░░░░░░░░░░░░░░░ │  ← ping-pong bar (cyan scan, yellow connect, solid green)
+└──────────────────────────────┘
+```
+
+### Flight HUD (accel mode or after BT connect)
+
+```
+┌──────────────────────────────┐
+│ WiFi   [STATE]          75%  │  ← status bar (WiFi / flight state / battery)
 ├─────────────────────────────┤
 │     │  ROL ████████░░░░░░   │
 │     │  YAW ░░░████████░░░   │
@@ -194,9 +252,8 @@ and remain fully testable without hardware.
 ```
 
 - **THR** — vertical orange bar, left column, fills bottom-to-top
-- **ROL / YAW** — horizontal cyan bars when accel active, grey when idle
+- **ROL / YAW** — horizontal cyan bars when controller active, grey when idle
 - **PCH** — always grey (pitch axis drives throttle, not direct drone pitch)
-- **Status bar** — WiFi (green/red), flight state name, "A" app-mode indicator
 
 ---
 
@@ -260,7 +317,9 @@ maritaca-e88-controller/
 ## Dependencies
 
 | Library | Source | Purpose |
-|---|---|---|
+| --- | --- | --- |
 | `M5Unified` | PlatformIO registry (`m5stack/M5Unified`) | Display, button, IMU, board init |
+| `ESP32 BLE Arduino` | Built-in with `espressif32` platform — no `lib_deps` entry needed | BLE HID host for gamepad |
+| `WiFi` | Built-in with `espressif32` platform | WiFi station mode |
 
 All other code is self-contained in `src/`.

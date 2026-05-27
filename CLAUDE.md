@@ -131,10 +131,14 @@ maritaca-e88-controller/
 │   ├── comm/
 │   │   ├── drone_protocol.h/cpp
 │   │   └── wifi_manager.h/cpp
+│   ├── bt/
+│   │   ├── gamepad_axes.h          # GamepadAxes struct — normalized axes, no BLE deps
+│   │   ├── ble_gamepad.h/cpp       # BLE HID host; BleStatus enum; all <BLEDevice.h> here only
 │   ├── control/
 │   │   ├── accel_controller.h/cpp  # tilt→roll/yaw + pitch→throttle mapping
+│   │   ├── gamepad_controller.h/cpp# GamepadAxes→DroneState; dead zone, expo, slew rate
 │   │   ├── flight_controller.h/cpp # state machine: Idle→Arming→Flying→Landing
-│   │   └── operation_mode.h/cpp
+│   │   └── operation_mode.h        # OperationMode enum; default = BluetoothControl
 │   └── ui/
 │       └── display.h/cpp
 ├── include/
@@ -158,12 +162,16 @@ maritaca-e88-controller/
 - Accel/tilt control: roll (left/right tilt), yaw (gz gyro rate), throttle (rate-based via pitch axis)
 - Battery level display from IP5306 via direct I2C
 - Display HUD: WiFi status, flight state, roll/pitch/yaw/throttle bars, battery
+- **Mode selection screen** at boot: ACCEL TILT / BT GAMEPAD with 3 s countdown; button click cycles options and resets timer; default = BT GAMEPAD
+- **BLE HID gamepad mode**: scans for BLE HID devices (8BitDo in Switch mode via X+Start), connects, subscribes to Input Report notifications, parses axis/button data → `GamepadAxes` → `GamepadController` → `DroneState`
+- **Dedicated BT status screen**: shows SCANNING… / CONNECTING… / CONNECTED! with animated ping-pong bar, WiFi status, battery, pairing hint; transitions to flight HUD 1.5 s after connect with clean redraw
 
 ### Open Issues
 
 1. **Drone rotates on ground before takeoff** — happens with board flat and still; suspected motor hardware fault or low battery. To diagnose: Serial-log `out.yaw` while board is flat — if 0x80 (128) it's hardware, not firmware. If not 0x80, gyro bias is leaking through dead zone → add startup calibration.
 2. **Throttle too sensitive** — small hand movements cause too much altitude change. Parameter tuning has been reverted each time due to concurrent drone hardware issues during test flights. When flight is stable, try: `THROTTLE_DEAD_DEG=12`, `MAX_THROTTLE_DEG=25`, `THROTTLE_RATE_MAX=1.5`.
 3. **Camera FPS quality command** — Android app sends a quality command (30%/60%/100% FPS) captured in PCAP. Need to identify the packet and check drone's default. Send 30% on connect if not default.
+4. **BT gamepad untested on hardware** — 8BitDo HID report format is the expected Switch-mode layout; first 20 raw reports are logged to Serial to allow byte-offset verification. Adjust `parseReport()` offsets if needed once physical controller is available.
 
 ---
 
@@ -196,6 +204,47 @@ static constexpr float ANGLE_ALPHA    =  0.25f;
 - Roll: negated (`-_filteredRoll`) — drone nose faces away from user, so left/right is mirrored
 - Yaw: negated (`-_filteredYaw`) — same reason
 - Pitch: drives throttle accumulator, `out.pitch` is always fixed at 0x80
+
+---
+
+## BT Gamepad — BleGamepad & GamepadController
+
+### BLE library
+
+Uses the **built-in ESP32 BLE Arduino** library (`<BLEDevice.h>`) that ships with the `espressif32` platform — no extra `lib_deps` entry required. All BLE includes are confined to `src/bt/ble_gamepad.cpp` (same isolation principle as M5Unified in m5atoms3.cpp).
+
+### 8BitDo Switch-mode pairing
+
+Hold **X + Start** until the LED blinks to enter Switch/BLE pairing mode. The controller advertises the HID service (UUID 0x1812) which `BleGamepad` scans for.
+
+### HID report format (8BitDo Switch mode)
+
+Some controllers prepend a 1-byte Report ID (`0x01`) — detected by `len == 8 && data[0] == 0x01`; offset `o` is set to 1 in that case, otherwise 0.
+
+```
+data[o+0]  Buttons[7:0]  B=0x01 A=0x02 Y=0x04 X=0x08 L=0x10 R=0x20 ZL=0x40 ZR=0x80
+data[o+1]  Buttons[15:8] -=0x01 +=0x02 L3=0x04 R3=0x08 Home=0x10 Capture=0x20
+data[o+2]  HAT  (0=N 2=E 4=S 6=W 8=center)
+data[o+3]  Left stick X   (0–255, center≈128)
+data[o+4]  Left stick Y   (0–255, center≈128, up=0 → invert)
+data[o+5]  Right stick X  (0–255, center≈128)
+data[o+6]  Right stick Y  (0–255, center≈128)
+```
+
+First 20 raw reports are dumped to Serial (`[BLE] report[N] len=N: XX XX …`) to allow format verification with a physical controller.
+
+### GamepadController tuning parameters
+
+All in `src/control/gamepad_controller.h`:
+
+```cpp
+static constexpr float DEAD_ZONE      = 0.12f;  // 12% of full scale
+static constexpr float EXPO           = 0.40f;  // expo curve blending
+static constexpr float SLEW           = 8.0f;   // units/frame max change for roll/pitch/yaw
+static constexpr float THR_RATE       = 2.0f;   // units/frame throttle change from ZL/ZR
+```
+
+**Axis mapping:** Left stick X → roll, left stick Y → pitch (inverted), right stick X → yaw. ZR = throttle up, ZL = throttle down. Throttle is rate-based (same as accel mode) — hold ZR to climb, hold ZL to descend, release both to hold altitude.
 
 ---
 
