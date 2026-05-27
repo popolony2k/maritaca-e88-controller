@@ -26,6 +26,7 @@ private:
     void parseReport(const uint8_t* data, uint8_t len);
 
     GamepadAxes _axes;
-    BleStatus   _status     = BleStatus::Scanning;
-    uint32_t    _debugCount = 0;
+    BleStatus   _status       = BleStatus::Scanning;
+    uint32_t    _debugCount   = 0;
+    uint32_t    _lastScanMs   = 0;
 };

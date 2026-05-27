@@ -78,12 +78,14 @@ void BleGamepad::begin() {
 }
 
 void BleGamepad::startScan() {
+    _lastScanMs = millis();
     BLEScan* scan = BLEDevice::getScan();
     scan->setAdvertisedDeviceCallbacks(&_scanCb);
     scan->setInterval(1349);
-    scan->setWindow(449);
-    scan->setActiveScan(true);
-    scan->start(0, nullptr, false);  // scan indefinitely
+    scan->setWindow(100);       // was 449 — lower duty cycle for WiFi coexistence
+    scan->setActiveScan(false); // passive scan — no scan-request packets, less radio usage
+    scan->clearResults();       // free heap from previous window
+    scan->start(5, nullptr, false);  // 5 s timed window; update() restarts it
 }
 
 void BleGamepad::doConnect() {
@@ -161,6 +163,11 @@ void BleGamepad::update() {
         _status = BleStatus::Scanning;
         startScan();
         Serial.println("[BLE] Scanning...");
+    }
+
+    // Restart timed scan window when it expires (every ~6 s)
+    if (!_connected && !_doConnect && (millis() - _lastScanMs >= 6000)) {
+        startScan();
     }
 
     // Process latest HID report
