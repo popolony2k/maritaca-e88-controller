@@ -38,7 +38,7 @@ private:
     void enterState(FlightState s, bool sendModeCmd = true);
     void handleButton(bool wifiOk);
     void handleDoubleClick(bool wifiOk);
-    void runState(const ImuData& imu);
+    void runState(const ImuData& imu, bool wifiOk);
 
     FlightDeps      _deps;
     OperationMode   _mode            = OperationMode::AccelControl;

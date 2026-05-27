@@ -27,7 +27,7 @@ void FlightController::begin() {
 void FlightController::update(const ImuData& imu, const GamepadAxes& gamepad, bool wifiOk) {
     _lastGamepadAxes = gamepad;
     handleButton(wifiOk);
-    runState(imu);
+    runState(imu, wifiOk);
 }
 
 void FlightController::enterState(FlightState s, bool sendModeCmd) {
@@ -115,8 +115,14 @@ void FlightController::handleDoubleClick(bool wifiOk) {
     }
 }
 
-void FlightController::runState(const ImuData& imu) {
+void FlightController::runState(const ImuData& imu, bool wifiOk) {
     uint32_t elapsed = millis() - _stateEnteredMs;
+
+    if (!wifiOk && _state != FlightState::Idle && _state != FlightState::Emergency) {
+        Serial.println("[Flight] WiFi lost — emergency stop");
+        enterState(FlightState::Emergency);
+        return;
+    }
 
     switch (_state) {
         case FlightState::Idle:

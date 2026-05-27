@@ -115,7 +115,7 @@ void loop() {
 
     bool showBtScreen = (modeManager.current() == OperationMode::BluetoothControl)
                         && (flight.state() == FlightState::Idle)
-                        && (!gpConnected || (millis() - _btConnectedMs < 1500));
+                        && (!gpConnected || !wifi.isConnected() || (millis() - _btConnectedMs < 1500));
 
     if (_prevShowBtScreen && !showBtScreen) display.markDirty();
     _prevShowBtScreen = showBtScreen;
