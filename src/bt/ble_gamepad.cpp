@@ -44,10 +44,14 @@ BleGamepad* BleGamepad::_instance = nullptr;
 // ---- BLE scan callback ----
 class HidScanCallback : public BLEAdvertisedDeviceCallbacks {
     void onResult(BLEAdvertisedDevice dev) override {
-        if (dev.haveServiceUUID() && dev.isAdvertisingService(HID_SERVICE_UUID)) {
-            Serial.printf("[BLE] Found HID device: \"%s\" %s\n",
-                          dev.getName().c_str(),
-                          dev.getAddress().toString().c_str());
+        bool isHid = dev.haveServiceUUID() && dev.isAdvertisingService(HID_SERVICE_UUID);
+        Serial.printf("[BLE] Seen: \"%s\" %s HID=%d RSSI=%d UUIDs=%s\n",
+                      dev.getName().c_str(),
+                      dev.getAddress().toString().c_str(),
+                      (int)isHid,
+                      dev.getRSSI(),
+                      dev.haveServiceUUID() ? dev.getServiceUUID().toString().c_str() : "none");
+        if (isHid) {
             BLEDevice::getScan()->stop();
             if (_foundDevice) delete _foundDevice;
             _foundDevice = new BLEAdvertisedDevice(dev);
@@ -97,9 +101,9 @@ void BleGamepad::startScan() {
     _lastScanMs = millis();
     BLEScan* scan = BLEDevice::getScan();
     scan->setAdvertisedDeviceCallbacks(&_scanCb);
-    scan->setInterval(1349);
-    scan->setWindow(100);       // was 449 — lower duty cycle for WiFi coexistence
-    scan->setActiveScan(false); // passive scan — no scan-request packets, less radio usage
+    scan->setInterval(200);
+    scan->setWindow(180);      // ~90% duty cycle for max discovery chance
+    scan->setActiveScan(true); // active scan — needed to catch HID UUID in scan responses
     scan->clearResults();       // free heap from previous window
     scan->start(5, nullptr, false);  // 5 s timed window; update() restarts it
 }
@@ -135,9 +139,29 @@ void BleGamepad::doConnect() {
         return;
     }
 
+    // Print HID Report Map (0x2A4B) to reveal the exact report format
+    static const BLEUUID REPORT_MAP_UUID((uint16_t)0x2A4B);
+    BLERemoteCharacteristic* reportMap = hidService->getCharacteristic(REPORT_MAP_UUID);
+    if (reportMap) {
+        std::string desc = reportMap->readValue();
+        Serial.printf("[BLE] HID descriptor (%u bytes):", (unsigned)desc.size());
+        for (size_t i = 0; i < desc.size(); i++) Serial.printf(" %02X", (uint8_t)desc[i]);
+        Serial.println();
+    } else {
+        Serial.println("[BLE] HID descriptor not found");
+    }
+
+    // Print all characteristics in the HID service for inspection
+    auto* chars = hidService->getCharacteristics();
+    for (auto& pair : *chars) {
+        BLERemoteCharacteristic* c = pair.second;
+        Serial.printf("[BLE] char %s canNotify=%d canRead=%d\n",
+                      c->getUUID().toString().c_str(),
+                      (int)c->canNotify(), (int)c->canRead());
+    }
+
     // Subscribe to all Input Report characteristics
     int registered = 0;
-    auto* chars = hidService->getCharacteristics();
     for (auto& pair : *chars) {
         BLERemoteCharacteristic* c = pair.second;
         if (c->getUUID().equals(HID_REPORT_UUID) && c->canNotify()) {
@@ -197,7 +221,7 @@ void BleGamepad::update() {
     }
 }
 
-// 8BitDo Switch mode (X+Start) HID report format:
+// 8BitDo Switch mode (X+Start) HID report format (7 or 8 bytes):
 //   Byte 0: Buttons[7:0]  B=0x01 A=0x02 Y=0x04 X=0x08 L=0x10 R=0x20 ZL=0x40 ZR=0x80
 //   Byte 1: Buttons[15:8] -=0x01 +=0x02 L3=0x04 R3=0x08 Home=0x10 Capture=0x20
 //   Byte 2: HAT (0=N 2=E 4=S 6=W 8=center)
@@ -206,29 +230,91 @@ void BleGamepad::update() {
 //   Byte 5: Right stick X (0–255, center≈128)
 //   Byte 6: Right stick Y (0–255, center≈128)
 // Some controllers prepend a Report ID byte (0x01); detected by checking length.
+//
+// iPega PG-9021S HID report format (17 bytes):
+//   HID usage page 0x0D (Digitizer), usage 0x04 (Touch Screen) — it is a multi-touch panel.
+//   4 contact blocks × 4 bytes each + 1 byte contact count (byte 16).
+//   Per 4-byte contact block (bit-packed, little-endian):
+//     bit 0:     Tip Switch (1 = finger touching)
+//     bit 1:     In Range
+//     bits 2–3:  padding
+//     bits 4–7:  Contact ID (0 = left stick area, 1 = right stick area)
+//     bits 8–19: X coordinate (0–1200)
+//     bits 20–31:Y coordinate (0–2200, top=0)
+//   Center positions measured from observed rest-touch data:
+//     Left  stick: X≈523  Y≈450    Right stick: X≈533  Y≈1650
 void BleGamepad::parseReport(const uint8_t* data, uint8_t len) {
-    // Log raw bytes for the first 20 reports to help confirm format
-    if (_debugCount < 20) {
+    bool debug = (_debugCount < 200);
+    if (debug) {
         Serial.printf("[BLE] report[%u] len=%u:", _debugCount, len);
         for (uint8_t i = 0; i < len; i++) Serial.printf(" %02X", data[i]);
         Serial.println();
         _debugCount++;
     }
 
-    // Detect report ID prefix: if len==8 and byte[0]==0x01, skip it
-    uint8_t o = (len == 8 && data[0] == 0x01) ? 1 : 0;
+    auto clamp = [](float v) { return v < -1.0f ? -1.0f : v > 1.0f ? 1.0f : v; };
 
-    if ((len - o) < 7) return;  // not enough bytes
+    // --- iPega PG-9021S (17 bytes, multi-touch digitizer) ---
+    // Touchscreen is portrait-oriented internally; held in landscape.
+    // Physical UP/DOWN maps to touchscreen X (0–1200); UP = X increases.
+    // Physical LEFT/RIGHT maps to touchscreen Y (0–2200); LEFT = Y increases.
+    if (len == 17) {
+        auto getX = [](const uint8_t* b) -> int {
+            return (int)((uint16_t)b[1] | (((uint16_t)(b[2] & 0x0F)) << 8));
+        };
+        auto getY = [](const uint8_t* b) -> int {
+            return (int)(((uint16_t)(b[2] >> 4)) | (((uint16_t)b[3]) << 4));
+        };
+
+        // Both sticks report cid=0; split by Y coordinate.
+        // Portrait-top  (Y < 1000) = landscape-LEFT  = left  stick; center ≈ (523, 500)
+        // Portrait-bot  (Y > 1000) = landscape-RIGHT = right stick; center ≈ (533, 1650)
+        static constexpr int   LX_CTR = 523, LY_CTR = 500;
+        static constexpr int   RX_CTR = 533, RY_CTR = 1650;
+        static constexpr float RANGE_L = 300.0f;  // left stick travel
+        static constexpr float RANGE_R = 180.0f;  // right stick has less physical travel
+
+        _axes.roll = _axes.pitch = _axes.yaw = 0.0f;
+        _axes.throttleUp = _axes.throttleDown = 0.0f;
+        _axes.connected = true;
+
+        for (int i = 0; i < 4; i++) {
+            const uint8_t* blk = data + i * 4;
+            uint8_t tipSwitch = blk[0] & 0x01;
+            uint8_t cid       = (blk[0] >> 4) & 0x0F;
+            int x = getX(blk), y = getY(blk);
+
+            if (debug) {
+                Serial.printf("[iPega] blk[%d] tip=%d cid=%d x=%d y=%d\n",
+                              i, (int)tipSwitch, (int)cid, x, y);
+            }
+
+            if (!tipSwitch) continue;
+
+            if (y < 1000) {                            // left stick area
+                _axes.roll  = clamp( (y - LY_CTR) / RANGE_L);
+                _axes.pitch = clamp(-(x - LX_CTR) / RANGE_L);
+            } else {                                   // right stick area
+                _axes.yaw = clamp( (y - RY_CTR) / RANGE_R);
+                float rthrottle = -(x - RX_CTR) / RANGE_R;
+                if (debug) Serial.printf("[THR] x=%d rthrottle=%.2f\n", x, rthrottle);
+                _axes.throttleUp   = (rthrottle >  0.08f) ? clamp(rthrottle) : 0.0f;
+                _axes.throttleDown = (rthrottle < -0.08f) ? clamp(-rthrottle) : 0.0f;
+            }
+        }
+        return;
+    }
+
+    // --- 8BitDo Switch mode (7 or 8 bytes, unsigned 8-bit axes centered at 128) ---
+    uint8_t o = (len == 8 && data[0] == 0x01) ? 1 : 0;
+    if ((len - o) < 7) return;
 
     uint8_t btn0 = data[o + 0];
-    // uint8_t btn1 = data[o + 1];  // available if needed
     uint8_t lx   = data[o + 3];
     uint8_t ly   = data[o + 4];
     uint8_t rx   = data[o + 5];
-    // uint8_t ry = data[o + 6];   // right stick Y — not mapped yet
 
     auto norm = [](uint8_t v) { return (v - 128) / 128.0f; };
-    auto clamp = [](float v) { return v < -1.0f ? -1.0f : v > 1.0f ? 1.0f : v; };
 
     _axes.roll         = clamp( norm(lx));
     _axes.pitch        = clamp(-norm(ly));  // invert Y: push forward = positive

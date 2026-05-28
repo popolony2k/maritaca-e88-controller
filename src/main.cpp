@@ -166,8 +166,24 @@ void loop() {
                                  kBoard.getBatteryLevel(),
                                  kBoard.isCharging());
         } else {
+            // In Idle+BT mode preview gamepad axes in the HUD bars without
+            // touching the drone protocol (no UDP sent).
+            DroneState displayState = drone.state();
+            if (modeManager.current() == OperationMode::BluetoothControl
+                && flight.state() == FlightState::Idle
+                && gpAxes.connected) {
+                auto tobyte = [](float v) -> uint8_t {
+                    int i = 0x80 + (int)(v * 127.0f);
+                    return (uint8_t)(i < 1 ? 1 : i > 254 ? 254 : i);
+                };
+                displayState.roll     = tobyte( gpAxes.roll);
+                displayState.pitch    = tobyte(-gpAxes.pitch);
+                displayState.yaw      = tobyte( gpAxes.yaw);
+                displayState.throttle = 0x80;
+                displayState.active   = true;
+            }
             display.update(wifi.isConnected(), flight.state(),
-                           drone.state(), imu.data(),
+                           displayState, imu.data(),
                            kBoard.getBatteryLevel(), kBoard.isCharging());
         }
     }
