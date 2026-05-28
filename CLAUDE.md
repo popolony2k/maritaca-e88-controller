@@ -15,7 +15,7 @@ The AtomS3 connects to the drone's AP, sends throttle / roll / pitch / yaw packe
 ## Hardware
 
 | Item | Detail |
-|---|---|
+| --- | --- |
 | **Board** | M5Stack AtomS3 (ESP32-S3, 240 MHz, 8 MB Flash, 2 MB PSRAM) |
 | **Display** | Built-in 0.85" 128×128 LCD, GC9107 driver, SPI — rotated 270° in firmware |
 | **Input** | Built-in **screen/face button** = BtnA (GPIO 41). Side button = hardware reset — do NOT use for flight. Say "press the screen." |
@@ -152,7 +152,7 @@ maritaca-e88-controller/
 
 ---
 
-## Current Implementation Status (2026-05-26)
+## Current Implementation Status (2026-05-28)
 
 ### Working
 
@@ -163,15 +163,18 @@ maritaca-e88-controller/
 - Battery level display from IP5306 via direct I2C
 - Display HUD: WiFi status, flight state, roll/pitch/yaw/throttle bars, battery
 - **Mode selection screen** at boot: ACCEL TILT / BT GAMEPAD with 3 s countdown; button click cycles options and resets timer; default = BT GAMEPAD
-- **BLE HID gamepad mode**: scans for BLE HID devices (8BitDo in Switch mode via X+Start), connects, subscribes to Input Report notifications, parses axis/button data → `GamepadAxes` → `GamepadController` → `DroneState`
-- **Dedicated BT status screen**: shows SCANNING… / CONNECTING… / CONNECTED! with animated ping-pong bar, WiFi status, battery, pairing hint; transitions to flight HUD 1.5 s after connect with clean redraw
+- **BLE HID gamepad mode**: scans for BLE HID devices, connects, subscribes to Input Report notifications, parses axis data → `GamepadAxes` → `GamepadController` → `DroneState`
+- **Dedicated BT status screen**: shows SCANNING… / CONNECTING… / CONNECTED! with animated ping-pong bar, WiFi status, battery, pairing hint; transitions to flight HUD 1.5 s after connect (requires WiFi also connected) with clean redraw
+- **iPega PG-9021S fully supported** (branch `support-to-ipega`): all 4 analog axes working and tuned — roll, pitch, yaw, throttle. See iPega section below.
+- **Idle+BT HUD preview**: when gamepad is connected but flight state is Idle, axis bars (including throttle) show raw gamepad input without sending UDP.
 
 ### Open Issues
 
 1. **Drone rotates on ground before takeoff** — happens with board flat and still; suspected motor hardware fault or low battery. To diagnose: Serial-log `out.yaw` while board is flat — if 0x80 (128) it's hardware, not firmware. If not 0x80, gyro bias is leaking through dead zone → add startup calibration.
 2. **Throttle too sensitive** — small hand movements cause too much altitude change. Parameter tuning has been reverted each time due to concurrent drone hardware issues during test flights. When flight is stable, try: `THROTTLE_DEAD_DEG=12`, `MAX_THROTTLE_DEG=25`, `THROTTLE_RATE_MAX=1.5`.
 3. **Camera FPS quality command** — Android app sends a quality command (30%/60%/100% FPS) captured in PCAP. Need to identify the packet and check drone's default. Send 30% on connect if not default.
-4. **BT gamepad untested on hardware** — 8BitDo HID report format is the expected Switch-mode layout; first 20 raw reports are logged to Serial to allow byte-offset verification. Adjust `parseReport()` offsets if needed once physical controller is available.
+4. **BT gamepad (8BitDo) untested on hardware** — 8BitDo HID report format is the expected Switch-mode layout; first 200 raw reports are logged to Serial to allow byte-offset verification. Adjust `parseReport()` offsets if needed once physical controller is available.
+5. **iPega button mapping pending** — all analog axes done; A/B/X/Y/HOME/triggers/d-pad buttons not yet mapped to drone commands. Buttons appear in the 17-byte digitizer report; format TBD from raw captures.
 
 ---
 
@@ -213,13 +216,65 @@ static constexpr float ANGLE_ALPHA    =  0.25f;
 
 Uses the **built-in ESP32 BLE Arduino** library (`<BLEDevice.h>`) that ships with the `espressif32` platform — no extra `lib_deps` entry required. All BLE includes are confined to `src/bt/ble_gamepad.cpp` (same isolation principle as M5Unified in m5atoms3.cpp).
 
-### 8BitDo Switch-mode pairing
+### Scan parameters
 
-Hold **X + Start** until the LED blinks to enter Switch/BLE pairing mode. The controller advertises the HID service (UUID 0x1812) which `BleGamepad` scans for.
+Active scan, interval=200, window=180 (~90% duty cycle). 5 s timed windows, auto-restarted every 6 s. HID descriptor (0x2A4B) and all characteristics logged on connect.
 
-### HID report format (8BitDo Switch mode)
+---
 
-Some controllers prepend a 1-byte Report ID (`0x01`) — detected by `len == 8 && data[0] == 0x01`; offset `o` is set to 1 in that case, otherwise 0.
+### iPega PG-9021S (confirmed working — branch `support-to-ipega`)
+
+**Pairing:** Turn off controller → hold **HOME + A** until LED flashes. This activates the digitizer/touchscreen mode which works without BLE bonding. Do NOT use HOME+X (Android Standard Gamepad) — it requires BLE bonding that the ESP32 stack doesn't set up.
+
+**HID report format:** 17 bytes. HID Usage Page 0x0D (Digitizer), Usage 0x04 (Touch Screen) — multi-touch panel with 4 contact blocks × 4 bytes + 1 contact-count byte.
+
+Per 4-byte contact block (little-endian bit-packed):
+
+```
+bit 0:      Tip Switch (1 = finger touching)
+bit 1:      In Range
+bits 2–3:   padding
+bits 4–7:   Contact ID (always 0 for both sticks — split by Y coordinate instead)
+bits 8–19:  X coordinate (0–1200)
+bits 20–31: Y coordinate (0–2200, top=0)
+```
+
+Extraction:
+
+```cpp
+X = byte[1] | ((byte[2] & 0x0F) << 8)
+Y = (byte[2] >> 4) | (byte[3] << 4)
+```
+
+**Orientation:** Screen is portrait internally, held in landscape. Physical UP/DOWN → X axis (UP = X increases). Physical LEFT/RIGHT → Y axis (LEFT = Y increases).
+
+**Stick area split:** Both sticks report Contact ID 0 — distinguished by Y coordinate:
+
+- Y < 1000 → left stick area (portrait-top = landscape-left)
+- Y ≥ 1000 → right stick area (portrait-bottom = landscape-right)
+
+**Tuned axis mapping (all working):**
+
+| Axis | Stick | Coordinate | Center | Range |
+| --- | --- | --- | --- | --- |
+| Roll | Left LEFT/RIGHT | Y | 500 | ±240 |
+| Pitch | Left UP/DOWN | X | 523 | ±300 |
+| Yaw | Right LEFT/RIGHT | Y | 1650 | ±120 |
+| Throttle | Right UP/DOWN | X | 533 | ±145 |
+
+Sign conventions: `roll = (y - LY_CTR) / RANGE_LY`, `pitch = -(x - LX_CTR) / RANGE_LX`, `yaw = (y - RY_CTR) / RANGE_RY`, `throttle = (x - RX_CTR) / RANGE_RX` (UP → positive → throttleUp).
+
+**Button mapping:** Pending. Buttons likely appear as additional contacts or bit flags in byte[0] of a contact block. Capture raw 17-byte reports with each button pressed (no sticks) to determine encoding.
+
+---
+
+### 8BitDo Switch-mode pairing (coded, not yet hardware-tested)
+
+Hold **X + Start** until the LED rotates to enter Switch/BLE pairing mode. The controller advertises the HID service (UUID 0x1812) which `BleGamepad` scans for.
+
+**Note:** Original SN30 Pro (non-plus) does NOT have BLE — all modes use Bluetooth Classic. Only SN30 Pro+, Pro 2, and Ultimate Bluetooth support BLE HID.
+
+**HID report format (7 or 8 bytes):** Some controllers prepend a 1-byte Report ID (`0x01`) — detected by `len == 8 && data[0] == 0x01`; offset `o` is set to 1 in that case, otherwise 0.
 
 ```
 data[o+0]  Buttons[7:0]  B=0x01 A=0x02 Y=0x04 X=0x08 L=0x10 R=0x20 ZL=0x40 ZR=0x80
@@ -231,7 +286,9 @@ data[o+5]  Right stick X  (0–255, center≈128)
 data[o+6]  Right stick Y  (0–255, center≈128)
 ```
 
-First 20 raw reports are dumped to Serial (`[BLE] report[N] len=N: XX XX …`) to allow format verification with a physical controller.
+First 200 raw reports are dumped to Serial (`[BLE] report[N] len=N: XX XX …`) to allow byte-offset verification.
+
+**Axis mapping:** Left stick X → roll, left stick Y → pitch (inverted), right stick X → yaw. ZR = throttle up, ZL = throttle down. Throttle is rate-based — hold ZR to climb, hold ZL to descend, release both to hold altitude.
 
 ### GamepadController tuning parameters
 
@@ -244,8 +301,6 @@ static constexpr float SLEW           = 8.0f;   // units/frame max change for ro
 static constexpr float THR_RATE       = 2.0f;   // units/frame throttle change from ZL/ZR
 ```
 
-**Axis mapping:** Left stick X → roll, left stick Y → pitch (inverted), right stick X → yaw. ZR = throttle up, ZL = throttle down. Throttle is rate-based (same as accel mode) — hold ZR to climb, hold ZL to descend, release both to hold altitude.
-
 ---
 
 ## Drone Identification — Confirmed Hardware
@@ -253,7 +308,7 @@ static constexpr float THR_RATE       = 2.0f;   // units/frame throttle change f
 The physical drone in use is an **E88 clone / WIFI_8K_ variant**, identified by:
 
 | Property | Value |
-|---|---|
+| --- | --- |
 | **WiFi SSID** | `WIFI_8K_Wf48702` |
 | **Drone IP** | `192.168.4.153` (non-standard subnet — differs from documented E88 `192.168.1.1`) |
 | **Client IP (AtomS3)** | `192.168.4.x` (DHCP assigned) |
@@ -268,7 +323,7 @@ The physical drone in use is an **E88 clone / WIFI_8K_ variant**, identified by:
 ### Port Map
 
 | Port | Protocol | Status | Purpose |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | UDP 7099 | UDP | **Closed** | Standard E88 control (not used by this variant) |
 | UDP 40000 | UDP | **Closed** | Standard E58 handshake (not used) |
 | UDP 50000 | UDP | **Closed** | Standard E58 control (not used) |
@@ -289,7 +344,7 @@ Confirmed by packet capture from the user's phone connected to `WIFI_8K_Wf48702`
 ```
 
 | Byte | Value | Description |
-|---|---|---|
+| --- | --- | --- |
 | 0 | `0x66` | Header (fixed) |
 | 1 | 0–254 | Roll (neutral = 128 = `0x80`) |
 | 2 | 0–254 | Pitch (neutral = 128 = `0x80`) |
@@ -309,7 +364,7 @@ Confirmed by packet capture from the user's phone connected to `WIFI_8K_Wf48702`
 The drone boots in **2.4 GHz RF controller mode** and ignores port 8090 until a mode-switch command is sent to **port 8080** (the video port doubles as a command channel):
 
 | Packet | Port | Payload | Effect |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | Enter app mode | UDP **8080** | `42 76` | Drone switches to WiFi control; video stream starts |
 | Exit app mode | UDP **8080** | `42 77` | Drone returns to RF controller mode; video stops |
 
@@ -340,7 +395,7 @@ When the joystick is idle (no active control input), the app sends a different p
 #### Command Byte Flags
 
 | Bit | Value | Function |
-|---|---|---|
+| --- | --- | --- |
 | 0 | `0x01` | Auto take-off |
 | 1 | `0x02` | Land |
 | 2 | `0x04` | Emergency stop |
@@ -410,7 +465,7 @@ The drone streams MJPEG video **from** `192.168.4.153:8080` **to** the client's 
 ## E58 vs E88 vs WIFI_8K_ — Protocol Comparison
 
 | Feature | E58 (standard) | E88 (standard) | **WIFI_8K_ (this drone)** |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | Drone IP | `192.168.0.1` | `192.168.1.1` | **`192.168.4.153`** |
 | Control port | UDP 50000 | UDP 7099 | **UDP 8090** |
 | Packet format | 8-byte `66…99` | ~2 bytes | **8-byte `66…99` (same as E58)** |

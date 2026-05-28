@@ -10,7 +10,7 @@ on its built-in 128×128 LCD.
 ## Hardware
 
 | Component | Detail |
-|---|---|
+| --- | --- |
 | **Board** | M5Stack AtomS3 (ESP32-S3, 240 MHz, 8 MB Flash, 2 MB PSRAM) |
 | **Display** | Built-in 0.85" 128×128 LCD, GC9107 driver, SPI |
 | **Input** | Built-in button — front screen face (GPIO 41 / BtnA) |
@@ -35,7 +35,25 @@ Replace the drone's factory RF remote with a custom controller supporting two mo
 - **Short press** (screen button) → start calibration → arm → fly
 - **Long press (2 s)** → emergency stop, return to idle
 
-### Mode 2 — BT Gamepad (8BitDo / BLE HID controller)
+### Mode 2 — BT Gamepad (BLE HID controller)
+
+Supported controllers:
+
+| Controller | Pairing | Notes |
+| --- | --- | --- |
+| **iPega PG-9021S** | Power off → hold **HOME + A** until LED flashes | Working; digitizer mode (HOME+A only — HOME+X requires bonding) |
+| **8BitDo** (Switch mode) | Hold **X + Start** until LED rotates | Coded; SN30 Pro+ / Pro 2 / Ultimate only — original SN30 Pro has no BLE |
+
+**iPega PG-9021S axis mapping:**
+
+- **Left stick LEFT/RIGHT** → roll
+- **Left stick UP/DOWN** → pitch (up = forward)
+- **Right stick LEFT/RIGHT** → yaw
+- **Right stick UP** → throttle up continuously
+- **Right stick DOWN** → throttle down continuously
+- **Release right stick** → throttle holds current value
+
+**8BitDo axis mapping:**
 
 - **Left stick X** → roll
 - **Left stick Y** → pitch
@@ -43,6 +61,9 @@ Replace the drone's factory RF remote with a custom controller supporting two mo
 - **ZR (hold)** → throttle up continuously
 - **ZL (hold)** → throttle down continuously
 - **Release both triggers** → throttle holds current value
+
+**Common controls:**
+
 - **Double-click** (screen button, when connected) → calibrate → arm → fly
 - **Long press (2 s)** → emergency stop, return to idle
 
@@ -62,7 +83,7 @@ The drone boots in RF remote mode and ignores the control port until a mode-swit
 is sent to the video port:
 
 | Action | Port | Payload |
-|---|---|---|
+| --- | --- | --- |
 | Enter WiFi control | UDP **8080** | `42 76` |
 | Exit WiFi control | UDP **8080** | `42 77` |
 
@@ -73,7 +94,7 @@ is sent to the video port:
 ```
 
 | Byte | Value | Description |
-|---|---|---|
+| --- | --- | --- |
 | 0 | `0x66` | Header (fixed) |
 | 1 | 0–254 | Roll — neutral = `0x80` |
 | 2 | 0–254 | Pitch — neutral = `0x80` |
@@ -94,7 +115,7 @@ Sent when no active control is in progress:
 ### Command byte flags
 
 | Bit | Value | Function |
-|---|---|---|
+| --- | --- | --- |
 | 0 | `0x01` | Auto take-off |
 | 1 | `0x02` | Land |
 | 2 | `0x04` | Emergency stop |
@@ -131,7 +152,7 @@ Packet captures used for reverse engineering are stored in `resources/pcap/`.
 ```
 
 | State | Action |
-|---|---|
+| --- | --- |
 | **Idle** | Sends neutral keepalive; awaits button press (accel) or double-click (BT) |
 | **Calibrating** | Sends `CaliGyro` + zero throttle for 1.5 s (gyro calibration) |
 | **Arming** | Sends `Unlock` → `TakeOff` command sequence |
@@ -194,7 +215,7 @@ and remain fully testable without hardware.
 ### Control loop timing
 
 | Task | Rate |
-|---|---|
+| --- | --- |
 | IMU read | 50 Hz (every 20 ms) |
 | Control packet | 25 Hz (every 40 ms) |
 | Keepalive | ~1.3 Hz (every 790 ms) |
