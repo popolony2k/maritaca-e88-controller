@@ -271,8 +271,10 @@ void BleGamepad::parseReport(const uint8_t* data, uint8_t len) {
         // Portrait-bot  (Y > 1000) = landscape-RIGHT = right stick; center ≈ (533, 1650)
         static constexpr int   LX_CTR = 523, LY_CTR = 500;
         static constexpr int   RX_CTR = 533, RY_CTR = 1650;
-        static constexpr float RANGE_L = 300.0f;  // left stick travel
-        static constexpr float RANGE_R = 180.0f;  // right stick has less physical travel
+        static constexpr float RANGE_LX = 300.0f;  // left stick X travel (UP/DOWN → pitch)
+        static constexpr float RANGE_LY = 240.0f;  // left stick Y travel (LEFT/RIGHT → roll)
+        static constexpr float RANGE_RX = 145.0f;  // right stick X travel (UP/DOWN → throttle)
+        static constexpr float RANGE_RY = 120.0f;  // right stick Y travel (LEFT/RIGHT → yaw)
 
         _axes.roll = _axes.pitch = _axes.yaw = 0.0f;
         _axes.throttleUp = _axes.throttleDown = 0.0f;
@@ -292,11 +294,11 @@ void BleGamepad::parseReport(const uint8_t* data, uint8_t len) {
             if (!tipSwitch) continue;
 
             if (y < 1000) {                            // left stick area
-                _axes.roll  = clamp( (y - LY_CTR) / RANGE_L);
-                _axes.pitch = clamp(-(x - LX_CTR) / RANGE_L);
+                _axes.roll  = clamp( (y - LY_CTR) / RANGE_LY);
+                _axes.pitch = clamp(-(x - LX_CTR) / RANGE_LX);
             } else {                                   // right stick area
-                _axes.yaw = clamp( (y - RY_CTR) / RANGE_R);
-                float rthrottle = -(x - RX_CTR) / RANGE_R;
+                _axes.yaw = clamp( (y - RY_CTR) / RANGE_RY);
+                float rthrottle = (x - RX_CTR) / RANGE_RX;  // UP → x increases → positive
                 if (debug) Serial.printf("[THR] x=%d rthrottle=%.2f\n", x, rthrottle);
                 _axes.throttleUp   = (rthrottle >  0.08f) ? clamp(rthrottle) : 0.0f;
                 _axes.throttleDown = (rthrottle < -0.08f) ? clamp(-rthrottle) : 0.0f;

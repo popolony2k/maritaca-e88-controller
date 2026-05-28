@@ -179,7 +179,7 @@ void loop() {
                 displayState.roll     = tobyte( gpAxes.roll);
                 displayState.pitch    = tobyte(-gpAxes.pitch);
                 displayState.yaw      = tobyte( gpAxes.yaw);
-                displayState.throttle = 0x80;
+                displayState.throttle = tobyte(gpAxes.throttleUp - gpAxes.throttleDown);
                 displayState.active   = true;
             }
             display.update(wifi.isConnected(), flight.state(),
