@@ -16,6 +16,7 @@
  */
 #include <Arduino.h>
 #include "flight_controller.h"
+#include "../bt/gamepad_axes.h"
 
 const char* flightStateName(FlightState s) {
     switch (s) {
@@ -43,6 +44,7 @@ void FlightController::begin() {
 void FlightController::update(const ImuData& imu, const GamepadAxes& gamepad, bool wifiOk) {
     _lastGamepadAxes = gamepad;
     handleButton(wifiOk);
+    if (_mode == OperationMode::BluetoothControl) handleGamepadButtons(wifiOk);
     runState(imu, wifiOk);
 }
 
@@ -53,6 +55,10 @@ void FlightController::enterState(FlightState s, bool sendModeCmd) {
     _btnIsHold       = false;
     _buttonDown      = false;
     _clickCount      = 0;
+
+    _oneShotCmd   = DroneCmd::None;
+    _oneShotUntil = 0;
+    _headless     = false;
 
     _accel.setEnabled(s == FlightState::Flying);
     if (s == FlightState::Flying) {
@@ -178,9 +184,17 @@ void FlightController::runState(const ImuData& imu, bool wifiOk) {
                 _accel.update(imu, cs);
             }
             if (cs.active) {
+                uint8_t cmd = DroneCmd::None;
+                if (_headless) cmd |= DroneCmd::Headless;
+                if (millis() < _oneShotUntil) {
+                    cmd |= _oneShotCmd;
+                } else {
+                    _oneShotCmd   = DroneCmd::None;
+                    _oneShotUntil = 0;
+                }
                 _deps.drone.setControl(cs.roll, cs.pitch, cs.throttle,
                                       _yawEnabled ? cs.yaw : (uint8_t)0x80,
-                                      DroneCmd::None);
+                                      cmd);
             } else {
                 _deps.drone.setIdle();
             }
@@ -201,4 +215,68 @@ void FlightController::runState(const ImuData& imu, bool wifiOk) {
     }
 
     _stateFirstFrame = false;
+}
+
+void FlightController::handleGamepadButtons(bool wifiOk) {
+    uint16_t curr    = _lastGamepadAxes.buttons;
+    uint16_t pressed = curr & ~_prevGpButtons;   // rising edges only
+    _prevGpButtons   = curr;
+    if (!pressed || !_lastGamepadAxes.connected) return;
+
+    // X — emergency stop, highest priority, any state
+    if (pressed & GamepadBtn::X) {
+        Serial.println("[Flight] Emergency (X)");
+        enterState(FlightState::Emergency);
+        return;
+    }
+    // A — arm + takeoff (Idle + WiFi only)
+    if ((pressed & GamepadBtn::A) && _state == FlightState::Idle && wifiOk) {
+        Serial.println("[Flight] Arm (A)");
+        enterState(FlightState::Calibrating);
+        return;
+    }
+    // B — land (Flying only)
+    if ((pressed & GamepadBtn::B) && _state == FlightState::Flying) {
+        Serial.println("[Flight] Land (B)");
+        enterState(FlightState::Landing);
+        return;
+    }
+
+    if (_state != FlightState::Flying) return;
+
+    // Y — flip
+    if (pressed & GamepadBtn::Y) {
+        _oneShotCmd   = DroneCmd::Flip;
+        _oneShotUntil = millis() + 200;
+        Serial.println("[Flight] Flip (Y)");
+    }
+    // LT — lock motors
+    if (pressed & GamepadBtn::LT) {
+        _oneShotCmd   = DroneCmd::Lock;
+        _oneShotUntil = millis() + 200;
+        Serial.println("[Flight] Lock (LT)");
+    }
+    // R1 — unlock motors
+    if (pressed & GamepadBtn::R1) {
+        _oneShotCmd   = DroneCmd::Unlock;
+        _oneShotUntil = millis() + 200;
+        Serial.println("[Flight] Unlock (R1)");
+    }
+
+    // D-pad buttons are in the left stick zone — guard against accidental
+    // triggers while the stick is deflected (thumb can't be on both).
+    bool stickClear = (fabsf(_lastGamepadAxes.roll)  < 0.15f &&
+                       fabsf(_lastGamepadAxes.pitch) < 0.15f);
+    if (!stickClear) return;
+
+    if (pressed & GamepadBtn::DpadUp) {
+        _headless = !_headless;
+        Serial.printf("[Flight] Headless %s (DpadUp)\n", _headless ? "ON" : "OFF");
+    }
+    if (pressed & GamepadBtn::DpadDown) {
+        _oneShotCmd   = DroneCmd::CaliGyro;
+        _oneShotUntil = millis() + 200;
+        Serial.println("[Flight] CaliGyro (DpadDown)");
+    }
+    // DpadLeft / DpadRight — spare, no action
 }

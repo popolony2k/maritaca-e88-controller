@@ -152,7 +152,7 @@ maritaca-e88-controller/
 
 ---
 
-## Current Implementation Status (2026-05-28)
+## Current Implementation Status (2026-05-29)
 
 ### Working
 
@@ -165,7 +165,7 @@ maritaca-e88-controller/
 - **Mode selection screen** at boot: ACCEL TILT / BT GAMEPAD with 3 s countdown; button click cycles options and resets timer; default = BT GAMEPAD
 - **BLE HID gamepad mode**: scans for BLE HID devices, connects, subscribes to Input Report notifications, parses axis data → `GamepadAxes` → `GamepadController` → `DroneState`
 - **Dedicated BT status screen**: shows SCANNING… / CONNECTING… / CONNECTED! with animated ping-pong bar, WiFi status, battery, pairing hint; transitions to flight HUD 1.5 s after connect (requires WiFi also connected) with clean redraw
-- **iPega PG-9021S fully supported** (branch `support-to-ipega`): all 4 analog axes working and tuned — roll, pitch, yaw, throttle. See iPega section below.
+- **iPega PG-9021S fully supported** (branch `support-to-ipega`): all 4 analog axes + 10 buttons mapped and confirmed working. See iPega section below.
 - **Idle+BT HUD preview**: when gamepad is connected but flight state is Idle, axis bars (including throttle) show raw gamepad input without sending UDP.
 
 ### Open Issues
@@ -174,7 +174,7 @@ maritaca-e88-controller/
 2. **Throttle too sensitive** — small hand movements cause too much altitude change. Parameter tuning has been reverted each time due to concurrent drone hardware issues during test flights. When flight is stable, try: `THROTTLE_DEAD_DEG=12`, `MAX_THROTTLE_DEG=25`, `THROTTLE_RATE_MAX=1.5`.
 3. **Camera FPS quality command** — Android app sends a quality command (30%/60%/100% FPS) captured in PCAP. Need to identify the packet and check drone's default. Send 30% on connect if not default.
 4. **BT gamepad (8BitDo) untested on hardware** — 8BitDo HID report format is the expected Switch-mode layout; first 200 raw reports are logged to Serial to allow byte-offset verification. Adjust `parseReport()` offsets if needed once physical controller is available.
-5. **iPega button mapping pending** — all analog axes done; A/B/X/Y/HOME/triggers/d-pad buttons not yet mapped to drone commands. Buttons appear in the 17-byte digitizer report; format TBD from raw captures.
+5. **iPega hardware buttons L1/RT/L3/R3 broken** — these generate no HID contacts; suspected ribbon cable faults. User plans to open controller. SELECT/START are reserved by controller firmware for mode-switching combos and never appear as HID contacts.
 
 ---
 
@@ -264,7 +264,26 @@ Y = (byte[2] >> 4) | (byte[3] << 4)
 
 Sign conventions: `roll = (y - LY_CTR) / RANGE_LY`, `pitch = -(x - LX_CTR) / RANGE_LX`, `yaw = (y - RY_CTR) / RANGE_RY`, `throttle = (x - RX_CTR) / RANGE_RX` (UP → positive → throttleUp).
 
-**Button mapping:** Pending. Buttons likely appear as additional contacts or bit flags in byte[0] of a contact block. Capture raw 17-byte reports with each button pressed (no sticks) to determine encoding.
+**Button detection:** Each button press appears as a contact at a fixed (x,y) in the 17-byte report (the controller emulates PUBG touchscreen positions — HOME+A is an undocumented "Direct Play" mode added by the 2019 firmware upgrade). `parseReport()` checks each contact against a known-position table (±30 tolerance) before the stick Y-zone classifier. Matches set bits in `GamepadAxes::buttons` (`GamepadBtn` namespace). `FlightController::handleGamepadButtons()` detects rising edges and fires drone commands.
+
+**iPega button positions and drone command mapping:**
+
+| Button | x | y | Zone | Drone command |
+| --- | --- | --- | --- | --- |
+| A | 332 | 2044 | right | Arm + takeoff (Idle + WiFi only) |
+| B | 780 | 1281 | right | Land (Flying only) |
+| X | 241 | 1270 | right | Emergency stop (any state) |
+| Y | 818 | 2020 | right | Flip 360° (Flying only) |
+| D-pad UP | 723 | 544 | left | Headless mode toggle (Flying, stick clear) |
+| D-pad DOWN | 352 | 562 | left | Calibrate gyro one-shot (Flying, stick clear) |
+| D-pad LEFT | 534 | 379 | left | Spare |
+| D-pad RIGHT | 536 | 740 | left | Spare |
+| LT | 1173 | 416 | left | Lock motors (Flying only) |
+| R1 | 578 | 2041 | right | Unlock motors (Flying only) |
+
+D-pad buttons are inside the left stick coordinate zone. A `stickClear` guard (`|roll|<0.15 && |pitch|<0.15`) prevents accidental triggers while the stick is deflected. One-shot commands (Flip, CaliGyro, Lock, Unlock) are held for 200 ms then cleared. Headless state is cleared on `enterState()`.
+
+**Broken/unavailable buttons:** L1, RT, L3, R3 (hardware — no contacts generated); SELECT, START (reserved by controller firmware for mode-switching combos — never appear in HID reports).
 
 ---
 

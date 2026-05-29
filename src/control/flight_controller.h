@@ -104,6 +104,24 @@ private:
     void handleButton(bool wifiOk);
 
     /**
+     * @brief Process gamepad button rising edges and trigger state transitions.
+     *
+     * Only called in BluetoothControl mode. Detects rising edges on
+     * GamepadAxes::buttons, then maps each button to a drone command:
+     *   A        → arm + takeoff (Idle + WiFi only)
+     *   B        → land (Flying only)
+     *   X        → emergency stop (any state)
+     *   Y        → flip (Flying only)
+     *   D-pad UP → headless mode toggle (Flying, stick near centre)
+     *   D-pad DN → calibrate gyro one-shot (Flying, stick near centre)
+     *   LT       → lock motors (Flying only)
+     *   R1       → unlock motors (Flying only)
+     *
+     * @param wifiOk  Required to gate the arm request.
+     */
+    void handleGamepadButtons(bool wifiOk);
+
+    /**
      * @brief React to a confirmed double-click gesture.
      * @param wifiOk  If false and in Idle, the arm attempt is rejected.
      */
@@ -133,6 +151,12 @@ private:
     GamepadAxes       _lastGamepadAxes;
     AccelController   _accel;
     GamepadController _gamepad;
+
+    // ---- Gamepad button state -------------------------------------------
+    uint16_t _prevGpButtons  = 0;
+    bool     _headless       = false;
+    uint8_t  _oneShotCmd     = 0;     ///< DroneCmd flag to inject for one shot.
+    uint32_t _oneShotUntil   = 0;     ///< millis() deadline for _oneShotCmd.
 
     static constexpr uint32_t DOUBLE_CLICK_MS     =  300; ///< Max gap between clicks (ms).
     static constexpr uint32_t HOLD_THRESHOLD_MS   =  500; ///< Press duration to trigger hold.

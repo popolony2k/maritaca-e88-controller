@@ -278,7 +278,26 @@ void BleGamepad::parseReport(const uint8_t* data, uint8_t len) {
 
         _axes.roll = _axes.pitch = _axes.yaw = 0.0f;
         _axes.throttleUp = _axes.throttleDown = 0.0f;
+        _axes.buttons   = 0;
         _axes.connected = true;
+
+        // Fixed touchscreen positions for each button (iPega HOME+A digitizer mode).
+        // Contacts matching these positions (±BTN_TOL) are button presses, not stick input.
+        struct BtnDef { int x, y; uint16_t bit; };
+        static constexpr BtnDef kBtns[] = {
+            {332,  2044, GamepadBtn::A},
+            {780,  1281, GamepadBtn::B},
+            {241,  1270, GamepadBtn::X},
+            {818,  2020, GamepadBtn::Y},
+            {723,   544, GamepadBtn::DpadUp},
+            {352,   562, GamepadBtn::DpadDown},
+            {534,   379, GamepadBtn::DpadLeft},
+            {536,   740, GamepadBtn::DpadRight},
+            {1173,  416, GamepadBtn::LT},
+            {578,  2041, GamepadBtn::R1},
+        };
+        static constexpr int N_BTNS  = (int)(sizeof(kBtns) / sizeof(kBtns[0]));
+        static constexpr int BTN_TOL = 30;
 
         for (int i = 0; i < 4; i++) {
             const uint8_t* blk = data + i * 4;
@@ -293,6 +312,18 @@ void BleGamepad::parseReport(const uint8_t* data, uint8_t len) {
 
             if (!tipSwitch) continue;
 
+            // Check for button contact first (fixed position)
+            bool isBtn = false;
+            for (int j = 0; j < N_BTNS; j++) {
+                if (abs(x - kBtns[j].x) <= BTN_TOL && abs(y - kBtns[j].y) <= BTN_TOL) {
+                    _axes.buttons |= kBtns[j].bit;
+                    isBtn = true;
+                    break;
+                }
+            }
+            if (isBtn) continue;
+
+            // Not a button — classify as stick by Y zone
             if (y < 1000) {                            // left stick area
                 _axes.roll  = clamp( (y - LY_CTR) / RANGE_LY);
                 _axes.pitch = clamp(-(x - LX_CTR) / RANGE_LX);

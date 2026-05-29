@@ -53,6 +53,19 @@ Supported controllers:
 - **Right stick DOWN** → throttle down continuously
 - **Release right stick** → throttle holds current value
 
+**iPega PG-9021S button mapping:**
+
+| Button | Action |
+| --- | --- |
+| **A** | Arm + takeoff (when idle and WiFi connected) |
+| **B** | Land |
+| **X** | Emergency stop (any state) |
+| **Y** | 360° flip |
+| **D-pad UP** | Toggle headless mode |
+| **D-pad DOWN** | Calibrate gyro (one-shot) |
+| **LT** | Lock motors |
+| **R1** | Unlock motors |
+
 **8BitDo axis mapping:**
 
 - **Left stick X** → roll
@@ -62,10 +75,10 @@ Supported controllers:
 - **ZL (hold)** → throttle down continuously
 - **Release both triggers** → throttle holds current value
 
-**Common controls:**
+**Common controls (screen button):**
 
-- **Double-click** (screen button, when connected) → calibrate → arm → fly
-- **Long press (2 s)** → emergency stop, return to idle
+- **Double-click** → calibrate → arm → fly (BT gamepad: use button A instead)
+- **Triple-click** → emergency stop, return to idle
 
 ### Boot mode selection
 
