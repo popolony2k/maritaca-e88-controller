@@ -60,6 +60,11 @@ void FlightController::enterState(FlightState s, bool sendModeCmd) {
     _oneShotUntil = 0;
     _headless     = false;
 
+    // Yaw defaults ON for gamepad (right stick controls it intentionally),
+    // OFF for accel (gyro Z drift would cause unwanted rotation).
+    _yawEnabled = (s == FlightState::Flying &&
+                   _mode == OperationMode::BluetoothControl);
+
     _accel.setEnabled(s == FlightState::Flying);
     if (s == FlightState::Flying) {
         _accel.begin();

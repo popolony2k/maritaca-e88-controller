@@ -325,14 +325,16 @@ void BleGamepad::parseReport(const uint8_t* data, uint8_t len) {
 
             // Not a button — classify as stick by Y zone
             if (y < 1000) {                            // left stick area
-                _axes.roll  = clamp( (y - LY_CTR) / RANGE_LY);
-                _axes.pitch = clamp(-(x - LX_CTR) / RANGE_LX);
+                // LEFT/RIGHT (Y) → yaw;  UP/DOWN (X) → throttle
+                _axes.yaw = clamp((y - LY_CTR) / RANGE_LY);
+                float lthrottle = (x - LX_CTR) / RANGE_LX;  // UP → x increases → positive
+                if (debug) Serial.printf("[THR] x=%d lthrottle=%.2f\n", x, lthrottle);
+                _axes.throttleUp   = (lthrottle >  0.08f) ? clamp(lthrottle) : 0.0f;
+                _axes.throttleDown = (lthrottle < -0.08f) ? clamp(-lthrottle) : 0.0f;
             } else {                                   // right stick area
-                _axes.yaw = clamp( (y - RY_CTR) / RANGE_RY);
-                float rthrottle = (x - RX_CTR) / RANGE_RX;  // UP → x increases → positive
-                if (debug) Serial.printf("[THR] x=%d rthrottle=%.2f\n", x, rthrottle);
-                _axes.throttleUp   = (rthrottle >  0.08f) ? clamp(rthrottle) : 0.0f;
-                _axes.throttleDown = (rthrottle < -0.08f) ? clamp(-rthrottle) : 0.0f;
+                // LEFT/RIGHT (Y) → roll;  UP/DOWN (X) → pitch
+                _axes.roll  = clamp((y - RY_CTR) / RANGE_RY);
+                _axes.pitch = clamp((x - RX_CTR) / RANGE_RX);
             }
         }
         return;

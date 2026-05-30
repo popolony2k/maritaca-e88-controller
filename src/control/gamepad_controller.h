@@ -66,6 +66,6 @@ private:
     static constexpr float DEAD_ZONE         = 0.12f; ///< 12% dead zone around stick centre.
     static constexpr float EXPO              =  0.4f; ///< Expo curve blend factor.
     static constexpr float SLEW_RATE         =  8.0f; ///< Max output change per frame at 25 Hz.
-    static constexpr float THROTTLE_RATE_MAX =  2.0f; ///< Throttle units/frame at full trigger.
+    static constexpr float THROTTLE_RATE_MAX =  0.6f; ///< Throttle units/frame at full trigger.
     static constexpr float THROTTLE_INIT     = 128.0f; ///< Starting throttle when Flying begins.
 };

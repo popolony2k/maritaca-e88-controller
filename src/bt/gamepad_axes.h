@@ -46,10 +46,10 @@ namespace GamepadBtn {
  */
 struct GamepadAxes {
     bool     connected    = false;  ///< True while a gamepad is actively connected.
-    float    roll         = 0.0f;   ///< Left stick X  [-1, 1], positive = right.
-    float    pitch        = 0.0f;   ///< Left stick Y  [-1, 1], positive = forward.
-    float    yaw          = 0.0f;   ///< Right stick X [-1, 1], positive = right.
-    float    throttleUp   = 0.0f;   ///< Right stick up   [0, 1] — climb.
-    float    throttleDown = 0.0f;   ///< Right stick down [0, 1] — descend.
+    float    roll         = 0.0f;   ///< Right stick LEFT/RIGHT [-1, 1], positive = right.
+    float    pitch        = 0.0f;   ///< Right stick UP/DOWN   [-1, 1], positive = forward.
+    float    yaw          = 0.0f;   ///< Left  stick LEFT/RIGHT[-1, 1], positive = right.
+    float    throttleUp   = 0.0f;   ///< Left  stick UP   [0, 1] — climb.
+    float    throttleDown = 0.0f;   ///< Left  stick DOWN [0, 1] — descend.
     uint16_t buttons      = 0;      ///< Bitmask of pressed buttons (GamepadBtn::*).
 };

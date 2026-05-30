@@ -163,7 +163,7 @@ private:
     static constexpr uint32_t CALI_DURATION_MS    = 1500; ///< Gyro calibration duration.
     static constexpr uint32_t UNLOCK_DURATION_MS  =  500; ///< Unlock command duration.
     static constexpr uint32_t TAKEOFF_DURATION_MS =  500; ///< TakeOff command duration.
-    static constexpr uint32_t ACCEL_LOCKOUT_MS    = 2000; ///< Post-takeoff input lockout.
+    static constexpr uint32_t ACCEL_LOCKOUT_MS    =  500; ///< Post-takeoff input lockout.
     static constexpr uint32_t LANDING_DURATION_MS = 2000; ///< Landing command duration.
     static constexpr float    THROTTLE_HOLD_RATE  =  1.0f; ///< Throttle adjust rate during hold.
 };

@@ -118,7 +118,7 @@ if (M5.BtnA.wasReleased()) { ... }  // project uses wasReleased, not wasPressed
 
 ## Project Structure
 
-```
+```text
 maritaca-e88-controller/
 ├── src/
 │   ├── main.cpp
@@ -230,7 +230,7 @@ Active scan, interval=200, window=180 (~90% duty cycle). 5 s timed windows, auto
 
 Per 4-byte contact block (little-endian bit-packed):
 
-```
+```text
 bit 0:      Tip Switch (1 = finger touching)
 bit 1:      In Range
 bits 2–3:   padding
@@ -257,12 +257,12 @@ Y = (byte[2] >> 4) | (byte[3] << 4)
 
 | Axis | Stick | Coordinate | Center | Range |
 | --- | --- | --- | --- | --- |
-| Roll | Left LEFT/RIGHT | Y | 500 | ±240 |
-| Pitch | Left UP/DOWN | X | 523 | ±300 |
-| Yaw | Right LEFT/RIGHT | Y | 1650 | ±120 |
-| Throttle | Right UP/DOWN | X | 533 | ±145 |
+| Throttle | Left UP/DOWN | X | 523 | ±300 |
+| Yaw | Left LEFT/RIGHT | Y | 500 | ±240 |
+| Pitch | Right UP/DOWN | X | 533 | ±145 |
+| Roll | Right LEFT/RIGHT | Y | 1650 | ±120 |
 
-Sign conventions: `roll = (y - LY_CTR) / RANGE_LY`, `pitch = -(x - LX_CTR) / RANGE_LX`, `yaw = (y - RY_CTR) / RANGE_RY`, `throttle = (x - RX_CTR) / RANGE_RX` (UP → positive → throttleUp).
+Sign conventions: `throttle = (x - LX_CTR) / RANGE_LX` (UP → positive → throttleUp), `yaw = (y - LY_CTR) / RANGE_LY`, `pitch = (x - RX_CTR) / RANGE_RX` (UP → positive → forward), `roll = (y - RY_CTR) / RANGE_RY`.
 
 **Button detection:** Each button press appears as a contact at a fixed (x,y) in the 17-byte report (the controller emulates PUBG touchscreen positions — HOME+A is an undocumented "Direct Play" mode added by the 2019 firmware upgrade). `parseReport()` checks each contact against a known-position table (±30 tolerance) before the stick Y-zone classifier. Matches set bits in `GamepadAxes::buttons` (`GamepadBtn` namespace). `FlightController::handleGamepadButtons()` detects rising edges and fires drone commands.
 
@@ -295,7 +295,7 @@ Hold **X + Start** until the LED rotates to enter Switch/BLE pairing mode. The c
 
 **HID report format (7 or 8 bytes):** Some controllers prepend a 1-byte Report ID (`0x01`) — detected by `len == 8 && data[0] == 0x01`; offset `o` is set to 1 in that case, otherwise 0.
 
-```
+```text
 data[o+0]  Buttons[7:0]  B=0x01 A=0x02 Y=0x04 X=0x08 L=0x10 R=0x20 ZL=0x40 ZR=0x80
 data[o+1]  Buttons[15:8] -=0x01 +=0x02 L3=0x04 R3=0x08 Home=0x10 Capture=0x20
 data[o+2]  HAT  (0=N 2=E 4=S 6=W 8=center)
@@ -314,10 +314,11 @@ First 200 raw reports are dumped to Serial (`[BLE] report[N] len=N: XX XX …`) 
 All in `src/control/gamepad_controller.h`:
 
 ```cpp
-static constexpr float DEAD_ZONE      = 0.12f;  // 12% of full scale
-static constexpr float EXPO           = 0.40f;  // expo curve blending
-static constexpr float SLEW           = 8.0f;   // units/frame max change for roll/pitch/yaw
-static constexpr float THR_RATE       = 2.0f;   // units/frame throttle change from ZL/ZR
+static constexpr float DEAD_ZONE         = 0.12f;  // 12% of full scale
+static constexpr float EXPO              = 0.40f;  // expo curve blending
+static constexpr float SLEW_RATE         = 8.0f;   // units/frame max change for roll/pitch/yaw
+static constexpr float THROTTLE_RATE_MAX = 0.6f;   // units/frame throttle change (tuned for weak motors)
+static constexpr float THROTTLE_INIT     = 128.0f; // throttle value when Flying begins
 ```
 
 ---
@@ -358,7 +359,7 @@ Confirmed by packet capture from the user's phone connected to `WIFI_8K_Wf48702`
 
 #### Packet Format
 
-```
+```text
 [ 0x66 | Roll | Pitch | Throttle | Yaw | Cmd | XOR | 0x99 ]
 ```
 
@@ -374,6 +375,7 @@ Confirmed by packet capture from the user's phone connected to `WIFI_8K_Wf48702`
 | 7 | `0x99` | Footer (fixed) |
 
 **Verified samples from live capture:**
+
 - `66 80 80 26 80 00 a6 99` → throttle ramp-up, checksum: `0x80^0x80^0x26^0x80 = 0xa6` ✓
 - `66 80 80 80 80 00 00 99` → all neutral, checksum: `0x80^0x80^0x80^0x80 = 0x00` ✓
 - `66 80 80 52 80 00 d2 99` → throttle mid, checksum: `0x80^0x80^0x52^0x80 = 0xd2` ✓
@@ -403,7 +405,7 @@ The drone boots in **2.4 GHz RF controller mode** and ignores port 8090 until a 
 
 When the joystick is idle (no active control input), the app sends a different packet at **~790 ms intervals**:
 
-```
+```text
 [ 0xAA | 0x80 | 0x80 | 0x00 | 0x80 | 0x00 | 0x80 | 0x55 ]
 ```
 
@@ -464,13 +466,15 @@ void sendKeepalive() {
 The drone streams MJPEG video **from** `192.168.4.153:8080` **to** the client's ephemeral port.
 
 **Packet structure:**
-```
+
+```text
 [ IPv4 | UDP src=192.168.4.153:8080 dst=10.215.173.1:<ephemeral> ]
 [ 8-byte proprietary header: 86 00 00 02 54 5A 48 00 ("TZH" magic) ]
 [ JPEG payload: FF D8 FF DB ... ]
 ```
 
 **Key details:**
+
 - Capture taken from user's **phone connected to this exact drone** (`WIFI_8K_Wf48702`) — fully confirmed for this hardware
 - Phone IP on the drone network: **`10.215.173.1`** (likely via packet capture VPN app such as PCAPdroid)
 - Magic tag `54 5A 48` = ASCII **"TZH"** — proprietary Chinese-OEM IP camera/NVR framing (not RTP/RTSP)

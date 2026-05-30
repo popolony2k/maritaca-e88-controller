@@ -46,12 +46,10 @@ Supported controllers:
 
 **iPega PG-9021S axis mapping:**
 
-- **Left stick LEFT/RIGHT** → roll
-- **Left stick UP/DOWN** → pitch (up = forward)
-- **Right stick LEFT/RIGHT** → yaw
-- **Right stick UP** → throttle up continuously
-- **Right stick DOWN** → throttle down continuously
-- **Release right stick** → throttle holds current value
+- **Left stick UP/DOWN** → throttle (up = climb, release = hold)
+- **Left stick LEFT/RIGHT** → yaw
+- **Right stick UP/DOWN** → pitch (up = forward)
+- **Right stick LEFT/RIGHT** → roll
 
 **iPega PG-9021S button mapping:**
 
@@ -102,7 +100,7 @@ is sent to the video port:
 
 ### Control packets — UDP port 8090, ~25 Hz
 
-```
+```text
 [ 0x66 | Roll | Pitch | Throttle | Yaw | Cmd | XOR | 0x99 ]
 ```
 
@@ -121,7 +119,7 @@ is sent to the video port:
 
 Sent when no active control is in progress:
 
-```
+```text
 [ 0xAA | 0x80 | 0x80 | 0x00 | 0x80 | 0x00 | 0x80 | 0x55 ]
 ```
 
@@ -144,7 +142,7 @@ Packet captures used for reverse engineering are stored in `resources/pcap/`.
 
 ## Flight State Machine
 
-```
+```text
          [button press + WiFi OK]
   Idle ──────────────────────────► Calibrating (1.5 s, CaliGyro)
                                         │
@@ -180,7 +178,7 @@ Packet captures used for reverse engineering are stored in `resources/pcap/`.
 The firmware is layered: hardware details are isolated in the HAL so that the business
 logic never touches M5Unified or Arduino APIs directly.
 
-```
+```text
 src/
 ├── main.cpp                    # setup() / loop() — wires all modules together;
 │                               #   mode selection at boot, BT screen vs HUD routing
@@ -240,7 +238,7 @@ and remain fully testable without hardware.
 
 ### Boot — mode selection
 
-```
+```text
 ┌──────────────────────────────┐
 │     -- SELECT MODE --        │
 │                              │
@@ -256,7 +254,7 @@ and remain fully testable without hardware.
 
 ### BT Gamepad — waiting for controller
 
-```
+```text
 ┌──────────────────────────────┐
 │    == BT GAMEPAD ==          │
 │                              │
@@ -272,7 +270,7 @@ and remain fully testable without hardware.
 
 ### Flight HUD (accel mode or after BT connect)
 
-```
+```text
 ┌──────────────────────────────┐
 │ WiFi   [STATE]          75%  │  ← status bar (WiFi / flight state / battery)
 ├─────────────────────────────┤
@@ -330,7 +328,7 @@ lib_deps  =
 
 ## Project Structure
 
-```
+```text
 maritaca-e88-controller/
 ├── src/                        # Firmware source (see Architecture above)
 ├── include/                    # Shared headers (currently unused)
