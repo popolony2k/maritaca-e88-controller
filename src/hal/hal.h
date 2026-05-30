@@ -54,6 +54,7 @@ struct BoardHal {
  */
 struct DisplayHal {
     void (*begin)        ();                                          ///< Display init — call once in setup().
+    void (*setBrightness)(uint8_t level);                            ///< Set backlight brightness (0 = off, 128 = default).
     void (*fillScreen)   (uint16_t color);                           ///< Fill entire screen with a solid color.
     void (*fillRect)     (int x, int y, int w, int h, uint16_t color); ///< Fill a rectangle.
     void (*drawRect)     (int x, int y, int w, int h, uint16_t color); ///< Draw a rectangle outline.

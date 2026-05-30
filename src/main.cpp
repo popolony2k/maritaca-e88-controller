@@ -57,6 +57,9 @@ static uint32_t _btConnectedMs    = 0;
 static bool     _btWasConnected   = false;
 static bool     _prevShowBtScreen = false;
 
+static bool     _screenOff        = false;
+static uint16_t _prevGpBtns       = 0;     // rising-edge tracking for main.cpp button events
+
 static constexpr uint32_t MODE_SELECT_MS = 3000; ///< Boot menu auto-select timeout (ms).
 
 /**
@@ -154,10 +157,29 @@ void loop() {
                         && (flight.state() == FlightState::Idle)
                         && (!gpConnected || !wifi.isConnected() || (millis() - _btConnectedMs < 1500));
 
-    if (_prevShowBtScreen && !showBtScreen) display.markDirty();
+    // D-pad LEFT: toggle screen on/off — only available on the flight HUD (not BT status screen)
+    uint16_t gpBtns   = gpAxes.buttons;
+    uint16_t gpPressed = gpBtns & ~_prevGpBtns;
+    _prevGpBtns        = gpBtns;
+    if ((gpPressed & GamepadBtn::DpadLeft) && !showBtScreen) {
+        _screenOff = !_screenOff;
+        if (_screenOff) display.sleep();
+        else            display.wake();
+    }
+
+    if (_prevShowBtScreen && !showBtScreen) {
+        display.markDirty();
+        _screenOff = true;
+        display.sleep();
+    }
+    if (!_prevShowBtScreen && showBtScreen && _screenOff) {
+        _screenOff = false;
+        display.wake();
+    }
     _prevShowBtScreen = showBtScreen;
 
     uint32_t now = millis();
+    if (_screenOff) return;  // backlight off — skip all display work
     if (now - _lastDisplayMs >= DISPLAY_INTERVAL_MS) {
         _lastDisplayMs = now;
         if (showBtScreen) {

@@ -90,6 +90,7 @@ const DisplayHal kDisplay {
         M5.Display.setTextSize(1);
         M5.Display.setTextDatum(TL_DATUM);
     },
+    .setBrightness = [](uint8_t v)                                   { M5.Display.setBrightness(v); },
     .fillScreen   = [](uint16_t c)                             { M5.Display.fillScreen(c); },
     .fillRect     = [](int x, int y, int w, int h, uint16_t c) { M5.Display.fillRect(x, y, w, h, c); },
     .drawRect     = [](int x, int y, int w, int h, uint16_t c) { M5.Display.drawRect(x, y, w, h, c); },

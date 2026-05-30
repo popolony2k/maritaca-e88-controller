@@ -61,6 +61,7 @@ Supported controllers:
 | **Y** | 360° flip |
 | **D-pad UP** | Toggle headless mode |
 | **D-pad DOWN** | Calibrate gyro (one-shot) |
+| **D-pad LEFT** | Toggle screen on/off (HUD only) |
 | **LT** | Lock motors |
 | **R1** | Unlock motors |
 

@@ -167,6 +167,7 @@ maritaca-e88-controller/
 - **Dedicated BT status screen**: shows SCANNING… / CONNECTING… / CONNECTED! with animated ping-pong bar, WiFi status, battery, pairing hint; transitions to flight HUD 1.5 s after connect (requires WiFi also connected) with clean redraw
 - **iPega PG-9021S fully supported** (branch `support-to-ipega`): all 4 analog axes + 10 buttons mapped and confirmed working. See iPega section below.
 - **Idle+BT HUD preview**: when gamepad is connected but flight state is Idle, axis bars (including throttle) show raw gamepad input without sending UDP.
+- **Screen auto-off/on**: screen turns off automatically when flight HUD activates; turns back on when BT/WiFi disconnects; D-pad LEFT toggles on/off while HUD is active. Uses `DisplayHal::setBrightness()` + `Display::sleep()`/`wake()`.
 
 ### Open Issues
 
@@ -276,12 +277,14 @@ Sign conventions: `throttle = (x - LX_CTR) / RANGE_LX` (UP → positive → thro
 | Y | 818 | 2020 | right | Flip 360° (Flying only) |
 | D-pad UP | 723 | 544 | left | Headless mode toggle (Flying, stick clear) |
 | D-pad DOWN | 352 | 562 | left | Calibrate gyro one-shot (Flying, stick clear) |
-| D-pad LEFT | 534 | 379 | left | Spare |
+| D-pad LEFT | 534 | 379 | left | Toggle screen on/off (HUD only) |
 | D-pad RIGHT | 536 | 740 | left | Spare |
 | LT | 1173 | 416 | left | Lock motors (Flying only) |
 | R1 | 578 | 2041 | right | Unlock motors (Flying only) |
 
 D-pad buttons are inside the left stick coordinate zone. A `stickClear` guard (`|roll|<0.15 && |pitch|<0.15`) prevents accidental triggers while the stick is deflected. One-shot commands (Flip, CaliGyro, Lock, Unlock) are held for 200 ms then cleared. Headless state is cleared on `enterState()`.
+
+**Screen lifecycle (BT gamepad mode):** BT status screen → screen ON. BT + WiFi connected 1.5 s → HUD activates → screen auto-OFF. D-pad LEFT (HUD only) → toggle. BT or WiFi disconnects → screen auto-ON. Implemented via `Display::sleep()`/`wake()` (`DisplayHal::setBrightness`) in `main.cpp`.
 
 **Broken/unavailable buttons:** L1, RT, L3, R3 (hardware — no contacts generated); SELECT, START (reserved by controller firmware for mode-switching combos — never appear in HID reports).
 

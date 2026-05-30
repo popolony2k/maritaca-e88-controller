@@ -47,6 +47,12 @@ public:
     /** @brief Force a full screen clear and label redraw on the next update() call. */
     void markDirty();
 
+    /** @brief Turn off the backlight (screen goes dark; state is preserved). */
+    void sleep();
+
+    /** @brief Restore backlight and force a full redraw on the next update() call. */
+    void wake();
+
     /**
      * @brief Render the flight HUD (throttle bar, roll/yaw/pitch bars, status bar).
      *

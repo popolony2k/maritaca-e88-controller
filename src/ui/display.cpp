@@ -91,6 +91,15 @@ void Display::markDirty() {
     _btScreenReady   = false;
 }
 
+void Display::sleep() {
+    _hal.setBrightness(0);
+}
+
+void Display::wake() {
+    _hal.setBrightness(128);
+    markDirty();
+}
+
 void Display::update(bool wifiConnected, FlightState flightState,
                      const DroneState& drone, const ImuData& imu,
                      int batteryLevel, bool charging) {
