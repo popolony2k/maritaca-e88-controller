@@ -22,12 +22,16 @@
 /**
  * @brief Maps normalised BLE gamepad axes to Eachine protocol control values.
  *
- * Axis mapping:
- *   - Left stick X  → roll
- *   - Left stick Y  → pitch
+ * Axis mapping (iPega PG-9021S HOME+A mode):
+ *   - Left  stick UP/DOWN    → throttle (rate-based accumulator)
+ *   - Left  stick LEFT/RIGHT → yaw
+ *   - Right stick UP/DOWN    → pitch
+ *   - Right stick LEFT/RIGHT → roll
+ *
+ * Axis mapping (8BitDo Switch mode):
+ *   - Left  stick X → roll,  Left stick Y → pitch
  *   - Right stick X → yaw
- *   - ZR (hold)     → throttle up at THROTTLE_RATE_MAX units/frame
- *   - ZL (hold)     → throttle down at THROTTLE_RATE_MAX units/frame
+ *   - ZR (hold) → throttle up,  ZL (hold) → throttle down
  *
  * Each stick axis passes through a dead zone, expo curve, and slew-rate
  * limiter matching the feel of AccelController. Throttle is rate-based —
