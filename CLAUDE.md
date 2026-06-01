@@ -502,6 +502,73 @@ The drone streams MJPEG video **from** `192.168.4.153:8080` **to** the client's 
 
 ---
 
+## FLOW-WIFI Variant — Partially Reverse-Engineered (branch `support-flow-wifi-drone`)
+
+Second physical drone — grey E88 clone with motorised front camera. Different internal MCU and firmware from the black WIFI_8K_ variant.
+
+### Identified Hardware
+
+| Property | Value |
+| --- | --- |
+| **WiFi SSID** | `FLOW-WIFI-304BA` |
+| **Drone IP** | `192.168.169.1` |
+| **Client IP (phone)** | `192.168.169.2` (DHCP assigned) |
+| **MAC address** | `c4:d7:fd:d5:04:ba` |
+| **WiFi channel** | 1 |
+| **Android app** | KY UFO |
+
+### Port Map (partial)
+
+| Port | Status | Purpose |
+| --- | --- | --- |
+| UDP **8800** | **CONFIRMED OPEN** | Primary control channel (88-byte packets) |
+| UDP 7099 | Open | Secondary keepalive (`01 01` every ~1 s) |
+
+### Control Protocol — UDP 8800 (PARTIALLY reverse-engineered)
+
+The app sends **88-byte** UDP packets to `192.168.169.1:8800`. Inside the payload, at **byte offset 18**, there is a **20-byte inner packet** with the familiar `66…99` structure:
+
+```text
+Outer 88-byte payload:
+  [ 18 bytes header (not yet decoded) ]
+  [ 20-byte inner control packet       ]  ← offset 18
+  [ 50 bytes zeros + trailing data     ]
+
+Inner 20-byte control packet:
+  [ 0x66 | 0x14 | Roll | Pitch | ? | Yaw | Cmd | 0x02 | 10×0x00 | XOR | 0x99 ]
+```
+
+| Byte | Value | Description |
+| --- | --- | --- |
+| 0 | `0x66` | Header (fixed — same as E58) |
+| 1 | `0x14` | Inner packet length = 20 decimal |
+| 2 | 0–254 | Roll (neutral = `0x80`) |
+| 3 | 0–254 | Pitch (neutral = `0x80`) |
+| 4 | 0–254 | Unknown axis (throttle?) — needs controlled capture |
+| 5 | 0–254 | Yaw (neutral = `0x80`) |
+| 6 | flags | Command byte |
+| 7 | `0x02` | Unknown constant |
+| 8–17 | `0x00` | Padding (10 bytes) |
+| 18 | computed | XOR checksum (formula TBD) |
+| 19 | `0x99` | Footer (fixed — same as E58) |
+
+**Status:** Axis field order and checksum formula not yet confirmed. Need controlled capture (one stick at a time) to identify which byte maps to which axis.
+
+### Secondary Keepalive — UDP 7099
+
+Sent approximately once per second:
+
+```text
+[ 0x01 | 0x01 ]
+```
+
+### PCAP captures
+
+- `resources/pcap/ussnoriko_ch1_2026-05-31_23.45.05.180.pcap` — idle only, 3 button taps
+- `resources/pcap/ussnoriko_ch1_2026-06-01_00.01.46.309.pcap` — short flight (partial decode)
+
+---
+
 ## Build & Upload Workflow
 
 - **Build**: PlatformIO bottom toolbar → checkmark (or `pio run`)

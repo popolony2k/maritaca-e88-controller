@@ -16,7 +16,7 @@ on its built-in 128×128 LCD.
 | **Input** | Built-in button — front screen face (GPIO 41 / BtnA) |
 | **IMU** | Built-in accelerometer + gyroscope (via M5Unified) |
 | **Communication** | WiFi 2.4 GHz (ESP32-S3 built-in) — connects to drone AP |
-| **Target drones** | Eachine E88, E58 and compatible WIFI_8K_ variants |
+| **Target drones** | Eachine E88, E58 and compatible variants (WIFI_8K_, FLOW-WIFI) |
 | **Power** | USB-C |
 
 ---
@@ -356,3 +356,14 @@ maritaca-e88-controller/
 | `WiFi` | Built-in with `espressif32` platform | WiFi station mode |
 
 All other code is self-contained in `src/`.
+
+---
+
+## Supported Drones
+
+| Drone | SSID | IP | Control port | Protocol | Status |
+| --- | --- | --- | --- | --- | --- |
+| **E88 clone — black (WIFI_8K_)** | `WIFI_8K_Wf48702` | `192.168.4.153` | UDP 8090 | 8-byte E58 | **Working** |
+| **E88 clone — grey (FLOW-WIFI)** | `FLOW-WIFI-304BA` | `192.168.169.1` | UDP 8800 | 88-byte (partially decoded) | **In progress** (branch `support-flow-wifi-drone`) |
+
+The grey drone uses a larger 88-byte UDP packet with a 20-byte inner `66…99` control structure at byte offset 18. Full protocol reverse engineering is ongoing.
