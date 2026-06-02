@@ -19,7 +19,7 @@
 #include "accel_controller.h"
 #include "gamepad_controller.h"
 #include "operation_mode.h"
-#include "../comm/drone_protocol.h"
+#include "../comm/drone_protocol_base.h"
 #include "../imu/accelerometer.h"
 #include "../bt/gamepad_axes.h"
 #include "../hal/hal.h"

@@ -18,7 +18,7 @@
 #include <Arduino.h>
 #include <WiFiUdp.h>
 #include <IPAddress.h>
-#include "drone_protocol.h"
+#include "drone_protocol_base.h"
 
 /**
  * @brief FLOW-WIFI drone UDP control protocol driver (grey E88 clone).
