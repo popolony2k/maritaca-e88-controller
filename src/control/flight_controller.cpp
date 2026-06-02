@@ -188,6 +188,14 @@ void FlightController::runState(const ImuData& imu, bool wifiOk) {
             DroneState cs;
             if (_mode == OperationMode::BluetoothControl) {
                 _gamepad.update(_lastGamepadAxes, cs);
+                // Altitude-hold drones (e.g. FLOW-WIFI): direct throttle mapping.
+                // 0x80 = hover, stick UP → climb, stick DOWN → descend, release → hover.
+                if (!_deps.drone.supportsArmSequence()) {
+                    float rate = _lastGamepadAxes.throttleUp - _lastGamepadAxes.throttleDown;
+                    if (rate >  1.0f) rate =  1.0f;
+                    if (rate < -1.0f) rate = -1.0f;
+                    cs.throttle = (uint8_t)(0x80 + (int)(rate * 0x7F));
+                }
             } else {
                 if (_btnIsHold) {
                     float delta = _btnHoldIsDown ? -THROTTLE_HOLD_RATE : THROTTLE_HOLD_RATE;
@@ -258,6 +266,16 @@ void FlightController::handleGamepadButtons(bool wifiOk) {
     if ((pressed & GamepadBtn::B) && _state == FlightState::Flying) {
         Serial.println("[Flight] Land (B)");
         enterState(FlightState::Landing);
+        return;
+    }
+    // D-pad RIGHT — manual arm (grey drone only, Idle + WiFi):
+    // enters Flying without auto-takeoff command; user does double-UP to lift off low.
+    if ((pressed & GamepadBtn::DpadRight) && _state == FlightState::Idle && wifiOk
+        && !_deps.drone.supportsArmSequence()) {
+        Serial.println("[Flight] Manual arm (DpadRight) — use double-UP to lift off");
+        enterState(FlightState::Flying);
+        _oneShotCmd   = DroneCmd::None;  // cancel auto-takeoff fired by enterState
+        _oneShotUntil = 0;
         return;
     }
 

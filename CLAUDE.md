@@ -154,11 +154,11 @@ maritaca-e88-controller/
 
 ---
 
-## Current Implementation Status (2026-05-29)
+## Current Implementation Status (2026-06-02)
 
 ### Working
 
-- WiFi connection to drone AP (`WIFI_8K_Wf48702`)
+- WiFi connection to drone AP (`WIFI_8K_Wf48702`) — auto-detected at boot via `WifiManager::scanForFirst()`
 - App mode activation (`42 76` → port 8080) — drone switches from RF to WiFi control
 - Flight state machine: Idle → Calibrating (1.5 s) → Arming (Unlock + TakeOff) → Flying → Landing/Emergency
 - Accel/tilt control: roll (left/right tilt), yaw (gz gyro rate), throttle (rate-based via pitch axis)
@@ -167,9 +167,10 @@ maritaca-e88-controller/
 - **Mode selection screen** at boot: ACCEL TILT / BT GAMEPAD with 3 s countdown; button click cycles options and resets timer; default = BT GAMEPAD
 - **BLE HID gamepad mode**: scans for BLE HID devices, connects, subscribes to Input Report notifications, parses axis data → `GamepadAxes` → `GamepadController` → `DroneState`
 - **Dedicated BT status screen**: shows SCANNING… / CONNECTING… / CONNECTED! with animated ping-pong bar, WiFi status, battery, pairing hint; transitions to flight HUD 1.5 s after connect (requires WiFi also connected) with clean redraw
-- **iPega PG-9021S fully supported** (branch `support-to-ipega`): all 4 analog axes + 10 buttons mapped and confirmed working. See iPega section below.
+- **iPega PG-9021S fully supported**: all 4 analog axes + 10 buttons mapped and confirmed working. See iPega section below.
 - **Idle+BT HUD preview**: when gamepad is connected but flight state is Idle, axis bars (including throttle) show raw gamepad input without sending UDP.
 - **Screen auto-off/on**: screen turns off automatically when flight HUD activates; turns back on when BT/WiFi disconnects; D-pad LEFT toggles on/off while HUD is active. Uses `DisplayHal::setBrightness()` + `Display::sleep()`/`wake()`.
+- **FLOW-WIFI grey drone fully supported**: auto-detected, 88-byte protocol, direct throttle (altitude hold), TakeOff toggle arm/land. See FLOW-WIFI section below.
 
 ### Open Issues
 
@@ -567,6 +568,13 @@ Inner 20-byte control packet:
 | `0x01` | TakeOff / Land toggle — first press = arm+takeoff, second press = land. Hold for ~1 s. |
 
 **No arm sequence required.** The drone auto-arms when it receives the TakeOff toggle (0x01). FlowWifiProtocol sets `supportsArmSequence() = false` so FlightController skips Calibrating/Arming and goes directly to Flying, firing TakeOff for 1 s on entry.
+
+**Throttle control (altitude hold):** Grey drone has optical flow altitude hold. Throttle is mapped DIRECTLY (not rate-based): stick center = 0x80 = maintain altitude, UP = climb, DOWN = descend, release = hover. Implemented in `FlightController::runState()` Flying case by overriding `cs.throttle` when `!supportsArmSequence()`.
+
+**Takeoff modes (grey drone):**
+
+- **Button A** → enters Flying + sends TakeOff toggle (0x01) for 1 s → drone auto-takes off HIGH
+- **D-pad RIGHT** → enters Flying WITHOUT TakeOff command → user does double-UP manually → lifts off LOW
 
 ### FLOW-WIFI Auto-detection
 

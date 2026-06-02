@@ -55,7 +55,8 @@ Supported controllers:
 
 | Button | Action |
 | --- | --- |
-| **A** | Arm + takeoff (when idle and WiFi connected) |
+| **A** | Arm + auto-takeoff HIGH (any drone) |
+| **D-pad RIGHT** | Manual arm → double-UP to lift off LOW (grey drone only) |
 | **B** | Land |
 | **X** | Emergency stop (any state) |
 | **Y** | 360° flip |
