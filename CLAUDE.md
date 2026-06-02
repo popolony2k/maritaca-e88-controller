@@ -129,8 +129,10 @@ maritaca-e88-controller/
 │   ├── imu/
 │   │   ├── accelerometer.h/cpp # ImuData struct, Accelerometer class
 │   ├── comm/
-│   │   ├── drone_protocol.h/cpp
-│   │   └── wifi_manager.h/cpp
+│   │   ├── drone_protocol_base.h       # DroneCmd, DroneState, DroneProtocolBase (abstract)
+│   │   ├── drone_protocol.h/cpp        # DroneProtocol — WIFI_8K_ black drone (E58 8-byte)
+│   │   ├── flow_wifi_protocol.h/cpp    # FlowWifiProtocol — FLOW-WIFI grey drone (88-byte)
+│   │   └── wifi_manager.h/cpp          # WiFi STA; scanForFirst() for auto-detection
 │   ├── bt/
 │   │   ├── gamepad_axes.h          # GamepadAxes struct — normalized axes, no BLE deps
 │   │   ├── ble_gamepad.h/cpp       # BLE HID host; BleStatus enum; all <BLEDevice.h> here only
@@ -570,7 +572,7 @@ Inner 20-byte control packet:
 
 At boot, `WifiManager::scanForFirst()` scans for both known drone SSIDs and returns the index of whichever is found. This runs before the mode-select screen so the UI countdown is not frozen. `FlightController` is then constructed with the matching protocol (`DroneProtocol` or `FlowWifiProtocol`) via `DroneProtocolBase&`.
 
-Key files: `src/comm/flow_wifi_protocol.h/.cpp`, `DroneProtocolBase` in `drone_protocol.h`, `WifiManager::scanForFirst()` in `wifi_manager.h/.cpp`.
+Key files: `src/comm/drone_protocol_base.h` (abstract interface), `src/comm/flow_wifi_protocol.h/.cpp` (implementation), `WifiManager::scanForFirst()` in `wifi_manager.h/.cpp`.
 
 ### Secondary Keepalive — UDP 7099
 

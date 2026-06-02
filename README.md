@@ -191,9 +191,10 @@ src/
 │                               #   includes M5Unified.h); non-capturing lambdas
 │
 ├── comm/
-│   ├── wifi_manager.h/.cpp     # WiFi station mode; auto-reconnect every 5 s
-│   └── drone_protocol.h/.cpp   # Packet encoder, 25 Hz control loop, keepalive,
-│                               #   app-mode entry/exit handshake
+│   ├── wifi_manager.h/.cpp         # WiFi STA; scanForFirst() auto-detects drone
+│   ├── drone_protocol_base.h       # DroneCmd, DroneState, DroneProtocolBase (abstract)
+│   ├── drone_protocol.h/.cpp       # WIFI_8K_ black drone — E58 8-byte, port 8090
+│   └── flow_wifi_protocol.h/.cpp   # FLOW-WIFI grey drone — 88-byte, port 8800
 │
 ├── imu/
 │   └── accelerometer.h/.cpp    # Raw IMU polling at 50 Hz via ImuHal
