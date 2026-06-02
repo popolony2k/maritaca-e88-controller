@@ -27,6 +27,18 @@
 class WifiManager {
 public:
     /**
+     * @brief Scan for visible WiFi networks and return the index of the first
+     *        SSID from @p ssids that is found, or -1 if none are visible.
+     *
+     * Blocking — takes 1–4 s. Call once during setup(), before begin().
+     *
+     * @param ssids  Null-terminated array of SSID strings to search for.
+     * @param count  Number of entries in @p ssids.
+     * @return Index into @p ssids of the first match, or -1.
+     */
+    static int scanForFirst(const char* const ssids[], int count);
+
+    /**
      * @brief Start WiFi and initiate the first connection attempt.
      * @param ssid      Target network SSID.
      * @param password  WPA2 passphrase, or nullptr for open networks.

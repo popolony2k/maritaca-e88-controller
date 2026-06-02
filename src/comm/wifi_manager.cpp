@@ -18,6 +18,28 @@
 #include <WiFi.h>
 #include "wifi_manager.h"
 
+int WifiManager::scanForFirst(const char* const ssids[], int count) {
+    Serial.println("[WiFi] Scanning for known drones...");
+    WiFi.mode(WIFI_STA);
+    int n = WiFi.scanNetworks();
+    Serial.printf("[WiFi] %d network(s) found\n", n);
+    for (int i = 0; i < n; i++) {
+        String found = WiFi.SSID(i);
+        for (int j = 0; j < count; j++) {
+            if (found == ssids[j]) {
+                Serial.printf("[WiFi] Drone detected: %s\n", ssids[j]);
+                WiFi.scanDelete();
+                WiFi.disconnect(false);  // reset scan state so begin() works cleanly after
+                return j;
+            }
+        }
+    }
+    WiFi.scanDelete();
+    WiFi.disconnect(false);  // reset scan state so begin() works cleanly after
+    Serial.println("[WiFi] No known drone found — defaulting to first");
+    return -1;
+}
+
 void WifiManager::begin(const char* ssid, const char* password) {
     _ssid     = ssid;
     _password = password;

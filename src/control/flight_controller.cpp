@@ -69,6 +69,11 @@ void FlightController::enterState(FlightState s, bool sendModeCmd) {
     if (s == FlightState::Flying) {
         _accel.begin();
         _gamepad.begin();
+        // Drones without arm sequence (e.g. FLOW-WIFI) use TakeOff toggle to arm and lift off.
+        if (!_deps.drone.supportsArmSequence()) {
+            _oneShotCmd   = DroneCmd::TakeOff;
+            _oneShotUntil = millis() + 1000;
+        }
     }
 
     if (sendModeCmd && s == FlightState::Idle) {
@@ -132,7 +137,9 @@ void FlightController::handleDoubleClick(bool wifiOk) {
                 Serial.println("[Flight] Button ignored — WiFi not connected");
                 return;
             }
-            enterState(FlightState::Calibrating);
+            // Drones that don't need CaliGyro/Unlock/TakeOff go straight to Flying.
+            enterState(_deps.drone.supportsArmSequence()
+                       ? FlightState::Calibrating : FlightState::Flying);
             break;
         case FlightState::Flying:
             enterState(FlightState::Landing);
@@ -207,7 +214,13 @@ void FlightController::runState(const ImuData& imu, bool wifiOk) {
         }
 
         case FlightState::Landing:
-            _deps.drone.setControl(0x80, 0x80, 0x80, 0x80, DroneCmd::Land);
+            if (_deps.drone.supportsArmSequence()) {
+                _deps.drone.setControl(0x80, 0x80, 0x80, 0x80, DroneCmd::Land);
+            } else {
+                // FLOW-WIFI: TakeOff toggle acts as land; send for 1 s then idle.
+                _deps.drone.setControl(0x80, 0x80, 0x80, 0x80,
+                                       elapsed < 1000 ? DroneCmd::TakeOff : DroneCmd::None);
+            }
             if (elapsed >= LANDING_DURATION_MS) {
                 enterState(FlightState::Idle);
             }
@@ -237,7 +250,8 @@ void FlightController::handleGamepadButtons(bool wifiOk) {
     // A — arm + takeoff (Idle + WiFi only)
     if ((pressed & GamepadBtn::A) && _state == FlightState::Idle && wifiOk) {
         Serial.println("[Flight] Arm (A)");
-        enterState(FlightState::Calibrating);
+        enterState(_deps.drone.supportsArmSequence()
+                   ? FlightState::Calibrating : FlightState::Flying);
         return;
     }
     // B — land (Flying only)

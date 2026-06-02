@@ -35,19 +35,29 @@
 #include "control/flight_controller.h"
 #include "comm/wifi_manager.h"
 #include "comm/drone_protocol.h"
+#include "comm/flow_wifi_protocol.h"
 #include "imu/accelerometer.h"
 #include "ui/display.h"
 #include "bt/ble_gamepad.h"
 
-static constexpr char DRONE_SSID[] = "WIFI_8K_Wf48702"; ///< Target drone access point SSID.
+// Known drone SSIDs — first match found during scan wins.
+static const char* const DRONE_SSIDS[] = {
+    "WIFI_8K_Wf48702",   // index 0 — black drone (WIFI_8K_ variant)
+    "FLOW-WIFI-304BA",   // index 1 — grey drone  (FLOW-WIFI variant)
+};
+static constexpr int N_DRONES = 2;
 
 static OperationModeManager modeManager;
 static WifiManager          wifi;
-static DroneProtocol        drone;
+static DroneProtocol        blackDrone;
+static FlowWifiProtocol     greyDrone;
+static DroneProtocolBase*   activeDrone = &blackDrone;  // resolved in setup()
 static Accelerometer        imu;
-static FlightController     flight({ kButton, drone });
 static BleGamepad           gamepad;
 static Display              display(kDisplay);
+
+// FlightController is constructed in setup() after drone auto-detection.
+static FlightController* flight = nullptr;
 
 static uint32_t _lastDisplayMs = 0;
 static constexpr uint32_t DISPLAY_INTERVAL_MS = 100;  // 10 Hz
@@ -111,17 +121,33 @@ void setup() {
 
     display.begin();
 
+    // Scan for known drones before the mode-select screen so the blocking
+    // scan doesn't freeze the countdown UI.
+    int droneIdx = WifiManager::scanForFirst(DRONE_SSIDS, N_DRONES);
+    if (droneIdx < 0) droneIdx = 0;  // default to black drone if none visible
+
     runModeSelection();
 
-    wifi.begin(DRONE_SSID);
-    drone.begin();
+    if (droneIdx == 1) {
+        activeDrone = &greyDrone;
+        Serial.println("[Boot] Drone: FLOW-WIFI grey");
+    } else {
+        activeDrone = &blackDrone;
+        Serial.println("[Boot] Drone: WIFI_8K_ black");
+    }
+
+    wifi.begin(DRONE_SSIDS[droneIdx]);
+    activeDrone->begin();
     imu.begin();
 
-    flight.setMode(modeManager.current());
-    flight.begin();
+    // Construct FlightController with the detected drone.
+    static FlightController fc({ kButton, *activeDrone });
+    flight = &fc;
+    flight->setMode(modeManager.current());
+    flight->begin();
 
     if (modeManager.current() == OperationMode::BluetoothControl) {
-        gamepad.begin();  // init BLE and start scanning
+        gamepad.begin();
     }
 }
 
@@ -133,7 +159,7 @@ void loop() {
     bool wifiNow = wifi.isConnected();
     if (wifiNow && !_prevWifiConnected) {
         Serial.println("[Main] WiFi connected — starting app mode entry");
-        drone.beginAppModeEntry();
+        activeDrone->beginAppModeEntry();
     }
     _prevWifiConnected = wifiNow;
 
@@ -143,10 +169,10 @@ void loop() {
         gpAxes = gamepad.axes();
     }
 
-    flight.update(imu.data(), gpAxes, wifi.isConnected());
+    flight->update(imu.data(), gpAxes, wifi.isConnected());
 
     if (wifi.isConnected()) {
-        drone.update();
+        activeDrone->update();
     }
 
     bool gpConnected = gamepad.axes().connected;
@@ -154,7 +180,7 @@ void loop() {
     _btWasConnected = gpConnected;
 
     bool showBtScreen = (modeManager.current() == OperationMode::BluetoothControl)
-                        && (flight.state() == FlightState::Idle)
+                        && (flight->state() == FlightState::Idle)
                         && (!gpConnected || !wifi.isConnected() || (millis() - _btConnectedMs < 1500));
 
     // D-pad LEFT: toggle screen on/off — only available on the flight HUD (not BT status screen)
@@ -190,9 +216,9 @@ void loop() {
         } else {
             // In Idle+BT mode preview gamepad axes in the HUD bars without
             // touching the drone protocol (no UDP sent).
-            DroneState displayState = drone.state();
+            DroneState displayState = activeDrone->state();
             if (modeManager.current() == OperationMode::BluetoothControl
-                && flight.state() == FlightState::Idle
+                && flight->state() == FlightState::Idle
                 && gpAxes.connected) {
                 auto tobyte = [](float v) -> uint8_t {
                     int i = 0x80 + (int)(v * 127.0f);
@@ -204,7 +230,7 @@ void loop() {
                 displayState.throttle = 0x80;  // no accumulator in Idle; keep neutral
                 displayState.active   = true;
             }
-            display.update(wifi.isConnected(), flight.state(),
+            display.update(wifi.isConnected(), flight->state(),
                            displayState, imu.data(),
                            kBoard.getBatteryLevel(), kBoard.isCharging());
         }

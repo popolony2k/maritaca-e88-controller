@@ -52,6 +52,52 @@ struct DroneState {
 };
 
 /**
+ * @brief Abstract base for all drone UDP protocol drivers.
+ *
+ * DroneProtocol (WIFI_8K_ black drone) and FlowWifiProtocol (FLOW-WIFI grey
+ * drone) both implement this interface so that FlightController and main.cpp
+ * can work with either drone without knowing the concrete type.
+ */
+class DroneProtocolBase {
+public:
+    virtual ~DroneProtocolBase() = default;
+
+    /** @brief Open the UDP socket. Call once in setup() after WiFi is initialised. */
+    virtual void begin() = 0;
+
+    /** @brief Advance timers and transmit pending packets. Call every loop(). */
+    virtual void update() = 0;
+
+    /** @brief Set active control values. */
+    virtual void setControl(uint8_t roll, uint8_t pitch, uint8_t throttle,
+                            uint8_t yaw, uint8_t cmd = DroneCmd::None) = 0;
+
+    /** @brief Return to keepalive / idle mode. */
+    virtual void setIdle() = 0;
+
+    /** @brief Begin app-mode activation sequence (no-op for drones that don't need it). */
+    virtual void beginAppModeEntry() {}
+
+    /** @brief Exit app mode (no-op for drones that don't need it). */
+    virtual void exitAppMode() {}
+
+    /** @brief Last control state written via setControl(). */
+    virtual const DroneState& state() const = 0;
+
+    /** @brief True once the drone is ready to accept control packets. */
+    virtual bool appModeOk() const { return true; }
+
+    /**
+     * @brief True if the drone requires the Calibrating→Arming sequence
+     *        (CaliGyro + Unlock + TakeOff commands) before flying.
+     *
+     * Return false for drones that auto-arm on throttle input (e.g. FLOW-WIFI).
+     * When false, FlightController jumps directly from Idle to Flying.
+     */
+    virtual bool supportsArmSequence() const { return true; }
+};
+
+/**
  * @brief Eachine WIFI_8K_ UDP control protocol driver.
  *
  * Encodes and sends the 8-byte E58-format control packets to the drone on
@@ -66,53 +112,18 @@ struct DroneState {
  * Packet format: [ 0x66 | Roll | Pitch | Throttle | Yaw | Cmd | XOR | 0x99 ]
  * XOR is computed over bytes 1–4 (Roll ^ Pitch ^ Throttle ^ Yaw).
  */
-class DroneProtocol {
+class DroneProtocol : public DroneProtocolBase {
 public:
-    /** @brief Open the UDP socket. Call once in setup() after WiFi is initialised. */
-    void begin();
-
-    /** @brief Advance timers and transmit pending packets. Call every loop(). */
-    void update();
-
-    /**
-     * @brief Set active control values for the next packet.
-     *
-     * Switches the driver into active mode; control packets are sent at 25 Hz.
-     * @param roll      Roll axis [0x00, 0xFE], neutral = 0x80.
-     * @param pitch     Pitch axis [0x00, 0xFE], neutral = 0x80.
-     * @param throttle  Throttle [0x00, 0xFE], neutral = 0x80.
-     * @param yaw       Yaw axis [0x00, 0xFE], neutral = 0x80.
-     * @param cmd       Optional command flag from DroneCmd namespace.
-     */
+    void begin()   override;
+    void update()  override;
     void setControl(uint8_t roll, uint8_t pitch, uint8_t throttle,
-                    uint8_t yaw, uint8_t cmd = DroneCmd::None);
+                    uint8_t yaw, uint8_t cmd = DroneCmd::None) override;
+    void setIdle() override;
 
-    /** @brief Return to keepalive mode — all axes neutral, no active command. */
-    void setIdle();
-
-    /**
-     * @brief Begin the app-mode activation sequence.
-     *
-     * Waits APP_MODE_SETTLE_MS after WiFi connects, then sends 0x42 0x76
-     * to port 8080 repeatedly for APP_MODE_ENTRY_MS. The drone switches
-     * from RF remote mode to WiFi control on the first successful receipt.
-     * Call once per WiFi connection event.
-     */
-    void beginAppModeEntry();
-
-    /**
-     * @brief Exit app mode and return the drone to RF remote control.
-     *
-     * Sends 0x42 0x77 to port 8080 once and cancels any pending entry.
-     * Called automatically when the flight controller transitions to Idle.
-     */
-    void exitAppMode();
-
-    /** @brief Last control state written via setControl(). */
-    const DroneState& state() const { return _state; }
-
-    /** @brief True after the first successful app-mode send. */
-    bool appModeOk() const { return _appModeOk; }
+    void beginAppModeEntry() override;
+    void exitAppMode()       override;
+    const DroneState& state()  const override { return _state; }
+    bool appModeOk()           const override { return _appModeOk; }
 
 private:
     /** @brief Encode and transmit a control packet to CONTROL_PORT. */

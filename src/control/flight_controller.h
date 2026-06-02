@@ -43,8 +43,8 @@ const char* flightStateName(FlightState s);
  * @brief External dependencies injected into FlightController at construction.
  */
 struct FlightDeps {
-    const ButtonHal& button; ///< Screen button abstraction.
-    DroneProtocol&   drone;  ///< UDP control protocol driver.
+    const ButtonHal&   button; ///< Screen button abstraction.
+    DroneProtocolBase& drone;  ///< UDP control protocol driver (any variant).
 };
 
 /**
