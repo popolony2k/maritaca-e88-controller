@@ -185,6 +185,12 @@ void FlightController::runState(const ImuData& imu, bool wifiOk) {
                 _deps.drone.setControl(0x80, 0x80, 0x80, 0x80, DroneCmd::None);
                 break;
             }
+            // BT gamepad lost during flight → emergency stop.
+            if (_mode == OperationMode::BluetoothControl && !_lastGamepadAxes.connected) {
+                Serial.println("[Flight] BT lost during flight — emergency stop");
+                enterState(FlightState::Emergency);
+                return;
+            }
             DroneState cs;
             if (_mode == OperationMode::BluetoothControl) {
                 _gamepad.update(_lastGamepadAxes, cs);
