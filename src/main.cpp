@@ -175,7 +175,9 @@ void loop() {
         activeDrone->update();
     }
 
-    bool gpConnected = gamepad.axes().connected;
+    // Use BLE link status (not axes.connected) so the transition fires as soon
+    // as the gamepad is connected — not waiting for the first HID report.
+    bool gpConnected = (gamepad.status() == BleStatus::Connected);
     if (gpConnected && !_btWasConnected) _btConnectedMs = millis();
     _btWasConnected = gpConnected;
 
