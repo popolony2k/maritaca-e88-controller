@@ -241,8 +241,14 @@ void FlightController::runState(const ImuData& imu, bool wifiOk) {
             break;
 
         case FlightState::Emergency:
-            _deps.drone.setControl(0x80, 0x80, 0x80, 0x80, DroneCmd::EmergStop);
-            enterState(FlightState::Idle);
+            if (_deps.drone.supportsArmSequence()) {
+                // Black drone: E58 EmergStop command cuts motors immediately.
+                _deps.drone.setControl(0x80, 0x80, 0x80, 0x80, DroneCmd::EmergStop);
+                enterState(FlightState::Idle);
+            } else {
+                _deps.drone.setControl(0x80, 0x80, 0x80, 0x80, DroneCmd::EmergStopFlowWifi);
+                if (elapsed >= 1000) enterState(FlightState::Idle);
+            }
             break;
     }
 

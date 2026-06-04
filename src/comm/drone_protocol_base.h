@@ -27,7 +27,8 @@ namespace DroneCmd {
     constexpr uint8_t None      = 0x00; ///< No command — normal flight packet.
     constexpr uint8_t TakeOff   = 0x01; ///< Auto take-off (also used as Land toggle on FLOW-WIFI).
     constexpr uint8_t Land      = 0x02; ///< Controlled landing (WIFI_8K_ only).
-    constexpr uint8_t EmergStop = 0x04; ///< Immediate motor cut-off.
+    constexpr uint8_t EmergStop         = 0x04; ///< Immediate motor cut-off (WIFI_8K_ black drone).
+    constexpr uint8_t EmergStopFlowWifi = 0x02; ///< Emergency stop for FLOW-WIFI grey drone (same byte as Land toggle — confirmed from KY UFO PCAP).
     constexpr uint8_t Flip      = 0x08; ///< 360° flip manoeuvre.
     constexpr uint8_t Headless  = 0x10; ///< Toggle headless mode.
     constexpr uint8_t Lock      = 0x20; ///< Lock motors (disarm).

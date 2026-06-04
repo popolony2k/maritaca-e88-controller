@@ -563,9 +563,10 @@ Inner 20-byte control packet:
 
 **Command byte flags (confirmed):**
 
-| Value | Function |
-| --- | --- |
-| `0x01` | TakeOff / Land toggle — first press = arm+takeoff, second press = land. Hold for ~1 s. |
+| Value | Constant | Function |
+| --- | --- | --- |
+| `0x01` | `DroneCmd::TakeOff` | TakeOff / Land toggle — first press = arm+takeoff, second press = land. Hold ~1 s. |
+| `0x02` | `DroneCmd::EmergStopFlowWifi` | Emergency stop — confirmed from KY UFO PCAP capture. Hold ~1 s. |
 
 **No arm sequence required.** The drone auto-arms when it receives the TakeOff toggle (0x01). FlowWifiProtocol sets `supportsArmSequence() = false` so FlightController skips Calibrating/Arming and goes directly to Flying, firing TakeOff for 1 s on entry.
 
@@ -596,6 +597,7 @@ Sent approximately once per second by the KY UFO app (not yet implemented in fir
 - `resources/pcap/ussnoriko_ch1_2026-06-01_00.01.46.309.pcap` — short flight, axis mapping confirmed
 - `resources/pcap/ussnoriko_ch1_2026-06-01_22.57.17.180.pcap` — controlled axis capture (one stick at a time)
 - `resources/pcap/ussnoriko_ch1_2026-06-01_23.55.27.327.pcap` — takeoff and landing commands confirmed
+- `resources/pcap/ussnoriko_ch1_2026-06-03_22.49.26.078.pcap` — emergency stop command confirmed (0x02)
 
 ---
 
