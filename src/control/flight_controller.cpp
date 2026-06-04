@@ -246,7 +246,7 @@ void FlightController::runState(const ImuData& imu, bool wifiOk) {
                 _deps.drone.setControl(0x80, 0x80, 0x80, 0x80, DroneCmd::EmergStop);
                 enterState(FlightState::Idle);
             } else {
-                _deps.drone.setControl(0x80, 0x80, 0x80, 0x80, DroneCmd::EmergStopFlowWifi);
+                _deps.drone.setControl(0x80, 0x80, 0x80, 0x80, DroneCmdEx::EmergStop);
                 if (elapsed >= 1000) enterState(FlightState::Idle);
             }
             break;

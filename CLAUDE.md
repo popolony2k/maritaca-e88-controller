@@ -566,7 +566,9 @@ Inner 20-byte control packet:
 | Value | Constant | Function |
 | --- | --- | --- |
 | `0x01` | `DroneCmd::TakeOff` | TakeOff / Land toggle — first press = arm+takeoff, second press = land. Hold ~1 s. |
-| `0x02` | `DroneCmd::EmergStopFlowWifi` | Emergency stop — confirmed from KY UFO PCAP capture. Hold ~1 s. |
+| `0x02` | `DroneCmdEx::EmergStop` | Emergency stop — confirmed from KY UFO PCAP capture. Hold ~1 s. |
+
+**Namespace convention:** `DroneCmd` holds universal E58-family commands. `DroneCmdEx` holds drone-specific extensions not part of the base protocol. New drone-specific commands go in `DroneCmdEx`.
 
 **No arm sequence required.** The drone auto-arms when it receives the TakeOff toggle (0x01). FlowWifiProtocol sets `supportsArmSequence() = false` so FlightController skips Calibrating/Arming and goes directly to Flying, firing TakeOff for 1 s on entry.
 

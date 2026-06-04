@@ -23,17 +23,29 @@
  * Multiple flags may be OR-combined, though in practice only one is sent
  * per packet.  Not all flags are supported by every drone variant.
  */
+/**
+ * @brief Command byte flags shared by all E58-family drone protocol variants.
+ */
 namespace DroneCmd {
     constexpr uint8_t None      = 0x00; ///< No command — normal flight packet.
-    constexpr uint8_t TakeOff   = 0x01; ///< Auto take-off (also used as Land toggle on FLOW-WIFI).
-    constexpr uint8_t Land      = 0x02; ///< Controlled landing (WIFI_8K_ only).
-    constexpr uint8_t EmergStop         = 0x04; ///< Immediate motor cut-off (WIFI_8K_ black drone).
-    constexpr uint8_t EmergStopFlowWifi = 0x02; ///< Emergency stop for FLOW-WIFI grey drone (same byte as Land toggle — confirmed from KY UFO PCAP).
+    constexpr uint8_t TakeOff   = 0x01; ///< Auto take-off.
+    constexpr uint8_t Land      = 0x02; ///< Controlled landing.
+    constexpr uint8_t EmergStop = 0x04; ///< Immediate motor cut-off.
     constexpr uint8_t Flip      = 0x08; ///< 360° flip manoeuvre.
     constexpr uint8_t Headless  = 0x10; ///< Toggle headless mode.
     constexpr uint8_t Lock      = 0x20; ///< Lock motors (disarm).
     constexpr uint8_t Unlock    = 0x40; ///< Unlock motors (arm).
     constexpr uint8_t CaliGyro  = 0x80; ///< Gyro calibration (hold flat).
+}
+
+/**
+ * @brief Drone-specific command extensions not part of the base E58 protocol.
+ *
+ * Each constant documents which drone variant it applies to and the source
+ * of the value (PCAP capture, reverse engineering, etc.).
+ */
+namespace DroneCmdEx {
+    constexpr uint8_t EmergStop = 0x02; ///< FLOW-WIFI grey drone emergency stop — confirmed from KY UFO PCAP capture.
 }
 
 /**
