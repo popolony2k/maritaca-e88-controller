@@ -245,9 +245,9 @@ and remain fully testable without hardware.
 ┌──────────────────────────────┐
 │     -- SELECT MODE --        │
 │                              │
-│ ░░░░░░░░░░░░░░░░░░░░░░░░░░░ │  ← highlighted option (navy bg)
+│ ░░░░░░░░░░░░░░░░░░░░░░░░░░░░ │  ← highlighted option (navy bg)
 │ > BT GAMEPAD                 │
-│ ░░░░░░░░░░░░░░░░░░░░░░░░░░░ │
+│ ░░░░░░░░░░░░░░░░░░░░░░░░░░░░ │
 │   ACCEL TILT                 │
 │                              │
 │      Auto in: 3s             │
@@ -267,7 +267,7 @@ and remain fully testable without hardware.
 │                              │
 │  WiFi OK              75%    │
 │                              │
-│ ░░░░░[████]░░░░░░░░░░░░░░░░ │  ← ping-pong bar (cyan scan, yellow connect, solid green)
+│ ░░░░░[████]░░░░░░░░░░░░░░░░░ │  ← ping-pong bar (cyan scan, yellow connect, solid green)
 └──────────────────────────────┘
 ```
 
@@ -276,13 +276,13 @@ and remain fully testable without hardware.
 ```text
 ┌──────────────────────────────┐
 │ WiFi   [STATE]          75%  │  ← status bar (WiFi / flight state / battery)
-├─────────────────────────────┤
-│     │  ROL ████████░░░░░░   │
-│     │  YAW ░░░████████░░░   │
-│ THR │  PCH ░░░░░░░░░░░░░   │  ← PCH greyed out (throttle-only mode)
-│  ▓  │                       │
-│  ▓  │                       │
-│     │                       │
+├──────────────────────────────┤
+│     │  ROL ████████░░░░░░    │
+│     │  YAW ░░░████████░░░    │
+│ THR │  PCH ░░░░░░░░░░░░░░    │  ← PCH greyed out (throttle-only mode)
+│  ▓  │                        │
+│  ▓  │                        │
+│     │                        │
 └──────────────────────────────┘
 ```
 
