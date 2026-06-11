@@ -366,6 +366,6 @@ All other code is self-contained in `src/`.
 | Drone | SSID | IP | Control port | Protocol | Status |
 | --- | --- | --- | --- | --- | --- |
 | **E88 clone — black (WIFI_8K_)** | `WIFI_8K_Wf48702` | `192.168.4.153` | UDP 8090 | 8-byte E58 | **Working** |
-| **E88 clone — grey (FLOW-WIFI)** | `FLOW-WIFI-304BA` | `192.168.169.1` | UDP 8800 | 88-byte envelope + 20-byte inner E58 | **Working** (branch `support-flow-wifi-drone`) |
+| **E88 clone — grey (FLOW-WIFI)** | `FLOW-WIFI-304BA` | `192.168.169.1` | UDP 8800 | 88-byte envelope + 20-byte inner E58 | **Working** |
 
 The firmware auto-detects which drone is present at boot via WiFi scan and selects the correct protocol automatically. The grey drone protocol is fully reverse-engineered — both axis mapping and takeoff/landing commands confirmed.
