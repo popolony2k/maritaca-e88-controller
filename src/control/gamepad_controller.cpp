@@ -41,12 +41,17 @@ void GamepadController::begin() {
 void GamepadController::update(const GamepadAxes& axes, DroneState& out) {
     if (!axes.connected) return;
 
-    // Rate-based throttle from ZL/ZR buttons
+    // Rate-based throttle from ZL/ZR buttons (or iPega left stick UP/DOWN).
+    // Both drones run altitude-hold firmware: throttle deviation from 0x80 is
+    // a climb/descend rate, not an accumulated lift level — snap back to
+    // hover the instant the stick/triggers are centered.
     float rate = axes.throttleUp - axes.throttleDown;
     if (fabsf(rate) > 0.05f) {
         _throttle += rate * THROTTLE_RATE_MAX;
         if (_throttle <   0.0f) _throttle =   0.0f;
         if (_throttle > 254.0f) _throttle = 254.0f;
+    } else {
+        _throttle = THROTTLE_INIT;
     }
 
     float targetRoll  = (float)mapAxis(axes.roll,  DEAD_ZONE, EXPO);

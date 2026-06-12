@@ -63,6 +63,9 @@ public:
      */
     void adjustThrottle(float delta);
 
+    /** @brief Reset the persistent throttle accumulator back to neutral (0x80). */
+    void resetThrottle() { _throttle = THROTTLE_INIT; }
+
 private:
     /**
      * @brief Map a signed sensor value to the Eachine [0, 254] range.

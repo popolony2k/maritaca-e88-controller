@@ -208,6 +208,14 @@ void FlightController::runState(const ImuData& imu, bool wifiOk) {
                     _accel.adjustThrottle(delta);
                 }
                 _accel.update(imu, cs);
+
+                // Both drones run altitude-hold firmware: throttle is a momentary
+                // climb/descend rate relative to hover (0x80), not an accumulated
+                // lift level — snap back to hover as soon as the hold gesture ends.
+                if (!_btnIsHold) {
+                    cs.throttle = 0x80;
+                    _accel.resetThrottle();
+                }
             }
             if (cs.active) {
                 uint8_t cmd = DroneCmd::None;

@@ -154,14 +154,14 @@ maritaca-e88-controller/
 
 ---
 
-## Current Implementation Status (2026-06-02)
+## Current Implementation Status (2026-06-11)
 
 ### Working
 
 - WiFi connection to drone AP (`WIFI_8K_Wf48702`) — auto-detected at boot via `WifiManager::scanForFirst()`
 - App mode activation (`42 76` → port 8080) — drone switches from RF to WiFi control
 - Flight state machine: Idle → Calibrating (1.5 s) → Arming (Unlock + TakeOff) → Flying → Landing/Emergency
-- Accel/tilt control: roll (left/right tilt), yaw (gz gyro rate), throttle (rate-based via pitch axis)
+- Accel/tilt control: roll (left/right tilt), pitch (forward/back tilt, drives drone pitch directly), yaw (gz gyro rate); throttle via screen-button hold gesture — see Throttle section below
 - Battery level display from IP5306 via direct I2C
 - Display HUD: WiFi status, flight state, roll/pitch/yaw/throttle bars, battery
 - **Mode selection screen** at boot: ACCEL TILT / BT GAMEPAD with 3 s countdown; button click cycles options and resets timer; default = BT GAMEPAD
@@ -171,14 +171,14 @@ maritaca-e88-controller/
 - **Idle+BT HUD preview**: when gamepad is connected but flight state is Idle, axis bars (including throttle) show raw gamepad input without sending UDP.
 - **Screen auto-off/on**: screen turns off automatically when flight HUD activates; turns back on when BT/WiFi disconnects; D-pad LEFT toggles on/off while HUD is active. Uses `DisplayHal::setBrightness()` + `Display::sleep()`/`wake()`.
 - **FLOW-WIFI grey drone fully supported**: auto-detected, 88-byte protocol, direct throttle (altitude hold), TakeOff toggle arm/land. See FLOW-WIFI section below.
+- **Both drones confirmed to run altitude-hold firmware** (2026-06-11): `0x80` throttle = hold current altitude, deviation = continuous climb/descend rate. Throttle-hold gestures (ACCEL screen-button hold and BT-gamepad left stick/ZL/ZR) now snap back to `0x80` the instant the gesture ends, instead of leaving the drone climbing/descending indefinitely. See Throttle sections below.
 
 ### Open Issues
 
 1. **Drone rotates on ground before takeoff** — happens with board flat and still; suspected motor hardware fault or low battery. To diagnose: Serial-log `out.yaw` while board is flat — if 0x80 (128) it's hardware, not firmware. If not 0x80, gyro bias is leaking through dead zone → add startup calibration.
-2. **Throttle too sensitive** — small hand movements cause too much altitude change. Parameter tuning has been reverted each time due to concurrent drone hardware issues during test flights. When flight is stable, try: `THROTTLE_DEAD_DEG=12`, `MAX_THROTTLE_DEG=25`, `THROTTLE_RATE_MAX=1.5`.
-3. **Camera FPS quality command** — Android app sends a quality command (30%/60%/100% FPS) captured in PCAP. Need to identify the packet and check drone's default. Send 30% on connect if not default.
-4. **BT gamepad (8BitDo) untested on hardware** — 8BitDo HID report format is the expected Switch-mode layout; first 200 raw reports are logged to Serial to allow byte-offset verification. Adjust `parseReport()` offsets if needed once physical controller is available.
-5. **iPega hardware buttons L1/RT/L3/R3 broken** — these generate no HID contacts; suspected ribbon cable faults. User plans to open controller. SELECT/START are reserved by controller firmware for mode-switching combos and never appear as HID contacts.
+2. **Camera FPS quality command** — Android app sends a quality command (30%/60%/100% FPS) captured in PCAP. Need to identify the packet and check drone's default. Send 30% on connect if not default.
+3. **BT gamepad (8BitDo) untested on hardware** — 8BitDo HID report format is the expected Switch-mode layout; first 200 raw reports are logged to Serial to allow byte-offset verification. Adjust `parseReport()` offsets if needed once physical controller is available.
+4. **iPega hardware buttons L1/RT/L3/R3 broken** — these generate no HID contacts; suspected ribbon cable faults. User plans to open controller. SELECT/START are reserved by controller firmware for mode-switching combos and never appear as HID contacts.
 
 ---
 
@@ -187,30 +187,50 @@ maritaca-e88-controller/
 All in `src/control/accel_controller.h`:
 
 ```cpp
-// Roll / Yaw
-static constexpr float MAX_TILT_DEG   = 20.0f;
-static constexpr float TILT_DEAD_ZONE = 10.0f;
-static constexpr float TILT_EXPO      =  0.5f;
+// Roll / Pitch (tilt)
+static constexpr float MAX_TILT_DEG    = 20.0f;
+static constexpr float TILT_DEAD_ZONE  = 10.0f;
+static constexpr float TILT_EXPO       =  0.5f;
 
-static constexpr float MAX_YAW_RATE   = 30.0f;  // tuned down from 60 — less spin
-static constexpr float YAW_DEAD_ZONE  = 10.0f;
-static constexpr float YAW_EXPO       =  0.4f;  // added for smoother yaw feel
+// Yaw (gyro Z rate)
+static constexpr float MAX_YAW_RATE    = 120.0f;
+static constexpr float YAW_DEAD_ZONE   =  20.0f;
+static constexpr float YAW_EXPO        =   0.5f;
 
-// Throttle (rate-based via pitch axis)
-static constexpr float THROTTLE_DEAD_DEG  =  8.0f;  // needs increase — too sensitive
-static constexpr float MAX_THROTTLE_DEG   = 20.0f;
-static constexpr float THROTTLE_RATE_MAX  =  2.5f;  // units/frame at max tilt
-static constexpr float THROTTLE_INIT      = 128.0f;
+// Pitch (forward/backward tilt — drives drone pitch directly, NOT throttle)
+static constexpr float MAX_PITCH_DEG   = 20.0f;
+static constexpr float PITCH_DEAD_ZONE = 10.0f;
+static constexpr float PITCH_EXPO      =  0.5f;
+
+// Slew rate limiter
+static constexpr float SLEW_RATE       =  3.0f;  // units/frame at 25 Hz
+
+// Throttle (neutral/hover)
+static constexpr float THROTTLE_INIT   = 128.0f;
 
 // Low-pass filter
-static constexpr float ANGLE_ALPHA    =  0.25f;
+static constexpr float ANGLE_ALPHA     =  0.25f;
 ```
 
 **Axis sign conventions:**
 
 - Roll: negated (`-_filteredRoll`) — drone nose faces away from user, so left/right is mirrored
 - Yaw: negated (`-_filteredYaw`) — same reason
-- Pitch: drives throttle accumulator, `out.pitch` is always fixed at 0x80
+- Pitch: NOT negated, directly mapped — tilt forward = fly forward
+
+### Throttle — button-hold gesture, altitude-hold on both drones
+
+Throttle is NOT tilt-based. Both Maritaca (black, WIFI_8K_) and Dr.One (grey, FLOW-WIFI)
+run altitude-hold firmware: `0x80` = hold current altitude, any deviation is sent every
+frame as a continuous climb/descend rate. Throttle is driven by the screen-button hold
+gesture in `FlightController::handleButton()` / `runState()` (Flying, ACCEL branch):
+
+- Press-and-hold (first gesture, `_clickCount == 0` when hold threshold is reached) → throttle UP (climb).
+- Click once, then press-and-hold within the double-click window → throttle DOWN (descend).
+- While held, `_accel.adjustThrottle(±THROTTLE_HOLD_RATE)` ramps the throttle accumulator by `THROTTLE_HOLD_RATE` per frame (`src/control/flight_controller.h`, currently `0.3f` ≈ 7.5 units/sec at 25 Hz) — small steps for fine climb/descend control.
+- On release, `cs.throttle` is forced to `0x80` and `AccelController::resetThrottle()` resets the accumulator back to neutral — the drone's own altitude hold then maintains the new altitude.
+
+The same snap-to-hover pattern applies in BT Gamepad mode via `GamepadController` — see GamepadController tuning section below.
 
 ---
 
@@ -326,6 +346,15 @@ static constexpr float SLEW_RATE         = 8.0f;   // units/frame max change for
 static constexpr float THROTTLE_RATE_MAX = 0.6f;   // units/frame throttle change (tuned for weak motors)
 static constexpr float THROTTLE_INIT     = 128.0f; // throttle value when Flying begins
 ```
+
+**Throttle (both drones, altitude-hold):** while the iPega left stick UP/DOWN (or
+8BitDo ZL/ZR) is deflected beyond `0.05f` (`|throttleUp - throttleDown| > 0.05f`),
+`_throttle` ramps by `±THROTTLE_RATE_MAX` per frame. The moment the stick/triggers
+return to center, `_throttle` snaps back to `THROTTLE_INIT` (`0x80`) instead of
+holding the accumulated value — the drone's altitude hold then maintains the new
+altitude. For Dr.One, `FlightController::runState()` additionally overrides
+`cs.throttle` directly from the current trigger state (`0x80 + rate * 0x7F`),
+independent of this accumulator.
 
 ---
 

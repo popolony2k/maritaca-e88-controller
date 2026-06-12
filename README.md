@@ -28,12 +28,13 @@ Replace the drone's factory RF remote with a custom controller supporting two mo
 ### Mode 1 — Accel Tilt (AtomS3 as a motion controller)
 
 - **Tilt the AtomS3 left/right** → roll (strafe)
-- **Rotate the board** (gyro Z-rate) → yaw (spin)
-- **Tilt the board back** (near edge up) → throttle increases continuously
-- **Tilt the board forward** (near edge down) → throttle decreases continuously
-- **Level** → throttle holds its current value
-- **Short press** (screen button) → start calibration → arm → fly
-- **Long press (2 s)** → emergency stop, return to idle
+- **Tilt the AtomS3 forward/back** → pitch (forward/backward flight)
+- **Rotate the board** (gyro Z-rate) → yaw (spin) — off by default; single-click while flying to toggle
+- **Press and hold the screen button** → throttle up (climb)
+- **Click once, then press and hold** → throttle down (descend)
+- **Release the hold** → throttle snaps back to hover — both drones run altitude-hold firmware, so the drone maintains the new altitude
+- **Double-click** (Idle, WiFi connected) → calibrate → arm → fly
+- **Triple-click** (any state) → emergency stop, return to idle
 
 ### Mode 2 — BT Gamepad (BLE HID controller)
 
@@ -46,7 +47,7 @@ Supported controllers:
 
 **iPega PG-9021S axis mapping:**
 
-- **Left stick UP/DOWN** → throttle (up = climb, release = hold)
+- **Left stick UP/DOWN** → throttle (up = climb, down = descend, release = hover)
 - **Left stick LEFT/RIGHT** → yaw
 - **Right stick UP/DOWN** → pitch (up = forward)
 - **Right stick LEFT/RIGHT** → roll
@@ -73,7 +74,7 @@ Supported controllers:
 - **Right stick X** → yaw
 - **ZR (hold)** → throttle up continuously
 - **ZL (hold)** → throttle down continuously
-- **Release both triggers** → throttle holds current value
+- **Release both triggers** → throttle snaps back to hover (altitude hold maintains the new altitude)
 
 **Common controls (screen button):**
 
