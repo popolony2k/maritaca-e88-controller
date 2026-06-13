@@ -63,8 +63,8 @@ public:
      * @param flightState    Current flight phase (displayed as text in status bar).
      * @param drone          Latest drone control state (axis bar values).
      * @param imu            Latest IMU sample (reserved — not yet rendered).
-     * @param batteryLevel   IP5306 level: 25/50/75/100 %, or -1 if unavailable.
-     * @param charging       True when VBUS charging is active.
+     * @param batteryLevel   Battery level: 0/25/50/75/100 %.
+     * @param charging       Always false — charging status is not available on this hardware.
      */
     void update(bool wifiConnected, FlightState flightState,
                 const DroneState& drone, const ImuData& imu,
@@ -89,8 +89,8 @@ public:
      *
      * @param status       Current BLE connection state.
      * @param wifiOk       True when drone WiFi AP is associated.
-     * @param batteryLevel IP5306 level: 25/50/75/100 %, or -1 if unavailable.
-     * @param charging     True when VBUS charging is active.
+     * @param batteryLevel Battery level: 0/25/50/75/100 %.
+     * @param charging     Always false — charging status is not available on this hardware.
      */
     void drawBtStatus(BleStatus status, bool wifiOk, int batteryLevel, bool charging);
 

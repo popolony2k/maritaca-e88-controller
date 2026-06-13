@@ -21,7 +21,7 @@ The AtomS3 connects to the drone's AP, sends throttle / roll / pitch / yaw packe
 | **Input** | Built-in **screen/face button** = BtnA (GPIO 41). Side button = hardware reset — do NOT use for flight. Say "press the screen." |
 | **LED** | Built-in RGB LED (via M5Unified) |
 | **Communication** | WiFi 2.4 GHz (ESP32-S3 built-in) — connects to drone AP |
-| **Power base** | M5Stack Atomic Battery Base — IP5306 power IC at I2C 0x75 |
+| **Power base** | M5Stack Atomic Battery Base — ETA9085 power IC (no I2C exposed); battery level read via GPIO8 (ADC2) voltage divider |
 | **Target drones** | Eachine E88, E58 (same Eachine UDP protocol family) |
 | **Power** | USB-C |
 
@@ -64,31 +64,84 @@ lib_deps =
 struct BoardHal {
     void (*begin)           ();
     void (*update)          ();
-    int  (*getBatteryLevel) ();   // 0/25/50/75/100 in %, or -1
-    bool (*isCharging)      ();
+    int  (*getBatteryLevel) ();   // 0/25/50/75/100 in %
+    bool (*isCharging)      ();   // always false — not available on this hardware
 };
 
 // m5atoms3.cpp — only file that includes M5Unified.h
 const BoardHal kBoard {
     .begin           = [] { auto cfg = M5.config(); M5.begin(cfg); },
     .update          = [] { M5.update(); },
-    .getBatteryLevel = [] { return ip5306BatteryLevel(); },
-    .isCharging      = [] { return ip5306IsCharging(); },
+    .getBatteryLevel = [] { return batteryLevel(); },
+    .isCharging      = [] { return false; },
 };
 ```
 
-### IP5306 battery IC (Atomic Battery Base)
+### Battery level (Atomic Battery Base)
 
-Direct I2C read via `M5.In_I2C.readRegister8()` — **do not use raw Wire calls**, they block the loop when the device doesn't respond on default pins.
+The Atomic Battery Base's power IC (board sticker: **ETA9085**, not a genuine IP5306) exposes **no I2C interface** — confirmed via a full bus scan of both `M5.In_I2C` and `M5.Ex_I2C` (only the onboard IMU at `0x68` on `In_I2C` responds; `0x75` NACKs on both buses). Do not attempt I2C register reads for battery status on this hardware.
+
+Battery voltage is instead sensed on **GPIO8** (`ADC2` in the AtomS3 `pins_arduino.h`) through an onboard voltage divider:
 
 ```cpp
-static constexpr uint8_t  IP5306_ADDR     = 0x75;
-static constexpr uint8_t  IP5306_REG_STA0 = 0x70;  // bit 3: charging
-static constexpr uint8_t  IP5306_REG_STA1 = 0x78;  // bits[2:1]: 00=25% 01=50% 10=75% 11=100%
-static constexpr uint32_t IP5306_I2C_FREQ = 400000;
+static constexpr uint8_t ADC_SAMPLES        = 8;     // averaged to smooth ~10 mV ADC jitter
+static constexpr float   ADC_DIVIDER_RATIO  = 2.06f; // empirically derived, see below
+static constexpr float   BATTERY_HYSTERESIS = 0.03f; // volts a boundary must be re-crossed by before the level changes
+
+static float batteryVoltage() {
+    uint32_t sum = 0;
+    for (uint8_t i = 0; i < ADC_SAMPLES; i++) sum += analogReadMilliVolts(ADC2);
+    return (sum / (float)ADC_SAMPLES) / 1000.0f * ADC_DIVIDER_RATIO;
+}
+
+static int batteryLevel() {
+    static int lastLevel = -1;  // unknown until the first read
+
+    struct Boundary { float v; int below; int above; };
+    static const Boundary boundaries[] = {
+        {3.00f,   0,  25},
+        {3.48f,  25,  50},
+        {3.62f,  50,  75},
+        {3.82f,  75, 100},
+    };
+
+    float v = batteryVoltage();
+
+    if (lastLevel < 0) {
+        int level = 0;
+        for (auto& b : boundaries) if (v >= b.v) level = b.above;
+        lastLevel = level;
+        return lastLevel;
+    }
+
+    for (auto& b : boundaries) {
+        // Descend immediately at the raw boundary — no lag on low-battery warnings.
+        if (lastLevel == b.above && v < b.v) { lastLevel = b.below; break; }
+        // Ascend only once past the boundary by a margin — prevents bounce-back from noise/recovery.
+        if (lastLevel == b.below && v >= b.v + BATTERY_HYSTERESIS) { lastLevel = b.above; break; }
+    }
+    return lastLevel;
+}
 ```
 
-Level register only updates at power-on or physical button press — it is a snapshot, not live.
+`ADC_DIVIDER_RATIO = 2.06` was derived empirically (2026-06-13) from calibration points
+against the base's 4-LED indicator, on battery power only (no USB):
+
+| LEDs lit | A2 (GPIO8) reading | VBAT = A2 × 2.06 | Threshold bucket |
+| --- | --- | --- | --- |
+| 3 (75%) | ~1776 mV | 3.66 V | 3.62–3.81 V → 75% ✓ |
+| 2 (50%) | ~1726 mV | 3.56 V | 3.48–3.61 V → 50% ✓ |
+| 1 (25%) | ~1676 mV | 3.45 V | 3.00–3.47 V → 25% ✓ |
+
+`batteryLevel()` applies **asymmetric** hysteresis (`BATTERY_HYSTERESIS = 0.03f`): the
+level descends immediately at the raw boundary (matches the LED indicator with no lag —
+e.g. 1 LED/25% confirmed lit at VBAT ~3.45 V, just below the 3.48 V boundary), but must
+climb back past the boundary by 0.03 V before ascending again. A symmetric band was
+tried first (2026-06-13) but caused the display to stick at 50% for minutes — even
+after the LED already showed 25% — because the real voltage plateaued in the
+3.45–3.48 V gap created by the symmetric margin.
+
+Charging status is **not detectable** on this hardware (`isCharging()` always returns `false`).
 
 ### Display
 
@@ -154,7 +207,7 @@ maritaca-e88-controller/
 
 ---
 
-## Current Implementation Status (2026-06-11)
+## Current Implementation Status (2026-06-13)
 
 ### Working
 
@@ -162,7 +215,7 @@ maritaca-e88-controller/
 - App mode activation (`42 76` → port 8080) — drone switches from RF to WiFi control
 - Flight state machine: Idle → Calibrating (1.5 s) → Arming (Unlock + TakeOff) → Flying → Landing/Emergency
 - Accel/tilt control: roll (left/right tilt), pitch (forward/back tilt, drives drone pitch directly), yaw (gz gyro rate); throttle via screen-button hold gesture — see Throttle section below
-- Battery level display from IP5306 via direct I2C
+- Battery level display via GPIO8 (ADC2) voltage divider on the Atomic Battery Base (ETA9085 — no I2C)
 - Display HUD: WiFi status, flight state, roll/pitch/yaw/throttle bars, battery
 - **Mode selection screen** at boot: ACCEL TILT / BT GAMEPAD with 3 s countdown; button click cycles options and resets timer; default = BT GAMEPAD
 - **BLE HID gamepad mode**: scans for BLE HID devices, connects, subscribes to Input Report notifications, parses axis data → `GamepadAxes` → `GamepadController` → `DroneState`

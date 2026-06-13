@@ -30,57 +30,84 @@
 static constexpr uint8_t ROTATION_270 = 3;
 
 /**
- * @defgroup ip5306 IP5306 Battery IC (Atomic Battery Base)
+ * @defgroup battery_adc Battery voltage sense (Atomic Battery Base)
  *
- * Direct I2C access via M5Unified's internal bus. M5Unified does not expose
- * battery level for the AtomS3 + Atomic Battery Base combination, so we read
- * the IP5306 registers directly.
+ * The Atomic Battery Base's power IC (board sticker: ETA9085, not a genuine
+ * IP5306) exposes no I2C registers — a full bus scan of both M5.In_I2C and
+ * M5.Ex_I2C found nothing at 0x75 (only the onboard IMU at 0x68 on In_I2C).
  *
- * Note: REG_STA1 level only updates at power-on or physical button press —
- * it is a snapshot, not a live reading.
+ * Battery voltage is instead sensed on GPIO8 ("ADC2" in the AtomS3
+ * pins_arduino.h) through an onboard divider. ADC_DIVIDER_RATIO was derived
+ * empirically from two points against the base's 4-LED indicator (battery on
+ * power only, no USB):
+ *   - 3 LEDs (75%): A2 ~1776 mV -> VBAT = 2.06 * 1.776 = 3.66 V
+ *   - 2 LEDs (50%): A2 ~1726 mV -> VBAT = 2.06 * 1.726 = 3.56 V
+ * Both land in their expected bucket below.
+ *
+ * batteryLevel() applies asymmetric hysteresis around each bucket boundary:
+ * the level descends immediately at the raw boundary (no lag on low-battery
+ * warnings — confirmed against the base's LED indicator: 1 LED / 25% lit at
+ * VBAT ~3.45 V, below the 3.48 V boundary), but requires the voltage to climb
+ * back past the boundary by BATTERY_HYSTERESIS before ascending again. This
+ * prevents bounce-back flicker when the voltage recovers slightly (noise or
+ * reduced load) without lagging behind a real discharge.
  * @{
  */
-static constexpr uint8_t  IP5306_ADDR     = 0x75;
-static constexpr uint8_t  IP5306_REG_STA0 = 0x70; ///< Bit 3: charging flag.
-static constexpr uint8_t  IP5306_REG_STA1 = 0x78; ///< Bits [2:1]: 00=25% 01=50% 10=75% 11=100%.
-static constexpr uint32_t IP5306_I2C_FREQ = 400000;
+static constexpr uint8_t ADC_SAMPLES        = 8;     ///< Averaged per read to smooth ~10 mV ADC jitter.
+static constexpr float   ADC_DIVIDER_RATIO  = 2.06f; ///< Empirically derived — see calibration notes above.
+static constexpr float   BATTERY_HYSTERESIS = 0.03f; ///< Volts a boundary must be re-crossed by before the level changes.
 
 /**
- * @brief Read a single register from the IP5306 via M5Unified's I2C bus.
- * @param reg Register address.
- * @return Register value, or -1 on bus error.
+ * @brief Read the battery cell voltage via the GPIO8 divider.
+ * @return Battery voltage in volts (averaged over ADC_SAMPLES reads).
  */
-static int ip5306ReadReg(uint8_t reg) {
-    return M5.In_I2C.readRegister8(IP5306_ADDR, reg, IP5306_I2C_FREQ);
+static float batteryVoltage() {
+    uint32_t sum = 0;
+    for (uint8_t i = 0; i < ADC_SAMPLES; i++) sum += analogReadMilliVolts(ADC2);
+    return (sum / (float)ADC_SAMPLES) / 1000.0f * ADC_DIVIDER_RATIO;
 }
 
 /**
- * @brief Read the battery charge level from the IP5306.
- * @return One of 25, 50, 75, 100 (percent), or -1 if the IC is unreachable.
+ * @brief Read the battery charge level from the GPIO8 voltage divider.
+ * @return One of 0, 25, 50, 75, 100 (percent). Asymmetric hysteresis
+ *         (BATTERY_HYSTERESIS) prevents bounce-back flicker on recovery
+ *         without lagging behind a real discharge.
  */
-static int ip5306BatteryLevel() {
-    int val = ip5306ReadReg(IP5306_REG_STA1);
-    if (val < 0) return -1;
-    static constexpr int levels[] = { 25, 50, 75, 100 };
-    return levels[(val >> 1) & 0x03];
-}
+static int batteryLevel() {
+    static int lastLevel = -1;  // unknown until the first read
 
-/**
- * @brief Check whether the battery is currently charging.
- * @return True when VBUS charging current is flowing (bit 3 of REG_STA0).
- */
-static bool ip5306IsCharging() {
-    int val = ip5306ReadReg(IP5306_REG_STA0);
-    if (val < 0) return false;
-    return (val & 0x08) != 0;
+    struct Boundary { float v; int below; int above; };
+    static const Boundary boundaries[] = {
+        {3.00f,   0,  25},
+        {3.48f,  25,  50},
+        {3.62f,  50,  75},
+        {3.82f,  75, 100},
+    };
+
+    float v = batteryVoltage();
+
+    if (lastLevel < 0) {
+        int level = 0;
+        for (auto& b : boundaries) if (v >= b.v) level = b.above;
+        lastLevel = level;
+        return lastLevel;
+    }
+
+    for (auto& b : boundaries) {
+        // Descend immediately at the raw boundary — no lag on low-battery warnings.
+        if (lastLevel == b.above && v < b.v) { lastLevel = b.below; break; }
+        // Ascend only once past the boundary by a margin — prevents bounce-back from noise/recovery.
+        if (lastLevel == b.below && v >= b.v + BATTERY_HYSTERESIS) { lastLevel = b.above; break; }
+    }
+    return lastLevel;
 }
 /** @} */
 
 const BoardHal kBoard {
     .begin           = [] { auto cfg = M5.config(); M5.begin(cfg); },
     .update          = [] { M5.update(); },
-    .getBatteryLevel = [] { return ip5306BatteryLevel(); },
-    .isCharging      = [] { return ip5306IsCharging(); },
+    .getBatteryLevel = [] { return batteryLevel(); },
+    .isCharging      = [] { return false; },  // no charging-status signal available on this hardware
 };
 
 const DisplayHal kDisplay {

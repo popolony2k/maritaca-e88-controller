@@ -42,8 +42,8 @@ namespace Rgb565 {
 struct BoardHal {
     void (*begin)           ();                ///< Board init — call once in setup().
     void (*update)          ();                ///< Poll button state — call every loop().
-    int  (*getBatteryLevel) ();                ///< Battery level: 0/25/50/75/100 %, or -1 if unavailable.
-    bool (*isCharging)      ();                ///< True when VBUS charging current is flowing.
+    int  (*getBatteryLevel) ();                ///< Battery level: 0/25/50/75/100 % (from GPIO8 voltage divider).
+    bool (*isCharging)      ();                ///< Always false — no charging-status signal available on this hardware.
 };
 
 /**
