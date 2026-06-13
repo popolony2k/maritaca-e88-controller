@@ -158,12 +158,13 @@ private:
     uint8_t  _oneShotCmd     = 0;     ///< DroneCmd flag to inject for one shot.
     uint32_t _oneShotUntil   = 0;     ///< millis() deadline for _oneShotCmd.
 
-    static constexpr uint32_t DOUBLE_CLICK_MS     =  300; ///< Max gap between clicks (ms).
+    static constexpr uint32_t DOUBLE_CLICK_MS     = 1000; ///< Max gap between clicks (ms).
     static constexpr uint32_t HOLD_THRESHOLD_MS   =  500; ///< Press duration to trigger hold.
     static constexpr uint32_t CALI_DURATION_MS    = 1500; ///< Gyro calibration duration.
     static constexpr uint32_t UNLOCK_DURATION_MS  =  500; ///< Unlock command duration.
     static constexpr uint32_t TAKEOFF_DURATION_MS =  500; ///< TakeOff command duration.
     static constexpr uint32_t ACCEL_LOCKOUT_MS    =  500; ///< Post-takeoff input lockout.
     static constexpr uint32_t LANDING_DURATION_MS = 2000; ///< Landing command duration.
-    static constexpr float    THROTTLE_HOLD_RATE  =  0.3f; ///< Throttle adjust rate during hold.
+    static constexpr float    THROTTLE_HOLD_RATE_UP   =  0.3f;  ///< Climb rate during hold (units/frame).
+    static constexpr float    THROTTLE_HOLD_RATE_DOWN =  0.15f; ///< Descend rate during hold (units/frame) — gentler for finer control.
 };
