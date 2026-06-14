@@ -166,5 +166,5 @@ private:
     static constexpr uint32_t ACCEL_LOCKOUT_MS    =  500; ///< Post-takeoff input lockout.
     static constexpr uint32_t LANDING_DURATION_MS = 2000; ///< Landing command duration.
     static constexpr float    THROTTLE_HOLD_RATE_UP   =  0.3f;  ///< Climb rate during hold (units/frame).
-    static constexpr float    THROTTLE_HOLD_RATE_DOWN =  0.15f; ///< Descend rate during hold (units/frame) — gentler for finer control.
+    static constexpr float    THROTTLE_HOLD_RATE_DOWN =  0.10f; ///< Descend rate during hold (units/frame) — gentler for finer control.
 };

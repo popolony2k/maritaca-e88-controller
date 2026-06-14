@@ -280,7 +280,7 @@ gesture in `FlightController::handleButton()` / `runState()` (Flying, ACCEL bran
 
 - Press-and-hold (first gesture, `_clickCount == 0` when hold threshold is reached) → throttle UP (climb).
 - Click once, then press-and-hold within the double-click window (`DOUBLE_CLICK_MS = 1000`) → throttle DOWN (descend).
-- While held, `_accel.adjustThrottle(±rate)` ramps the throttle accumulator per frame (`src/control/flight_controller.h`): `THROTTLE_HOLD_RATE_UP = 0.3f` (≈ 7.5 units/sec at 25 Hz) for climb, `THROTTLE_HOLD_RATE_DOWN = 0.15f` (≈ 3.75 units/sec) for descend — descend is gentler so the drone settles back to hover without an overshoot dip on release.
+- While held, `_accel.adjustThrottle(±rate)` ramps the throttle accumulator per frame (`src/control/flight_controller.h`): `THROTTLE_HOLD_RATE_UP = 0.3f` (≈ 7.5 units/sec at 25 Hz) for climb, `THROTTLE_HOLD_RATE_DOWN = 0.10f` (≈ 2.5 units/sec) for descend — descend is gentler so the drone settles back to hover without an overshoot dip on release.
 - On release, `cs.throttle` is forced to `0x80` and `AccelController::resetThrottle()` resets the accumulator back to neutral — the drone's own altitude hold then maintains the new altitude.
 
 The same snap-to-hover pattern applies in BT Gamepad mode via `GamepadController` — see GamepadController tuning section below.
