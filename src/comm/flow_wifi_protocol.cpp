@@ -28,6 +28,7 @@ void FlowWifiProtocol::begin() {
 }
 
 void FlowWifiProtocol::update() {
+    if (!_state.active) return;  // stop sending when idle — post-landing packets re-arm the drone
     uint32_t now = millis();
     if (now - _lastSendMs < CONTROL_INTERVAL_MS) return;
     _lastSendMs = now;
