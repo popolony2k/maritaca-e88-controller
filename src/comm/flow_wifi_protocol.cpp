@@ -21,15 +21,32 @@ const IPAddress FlowWifiProtocol::DRONE_IP(192, 168, 169, 1);
 
 void FlowWifiProtocol::begin() {
     _udp.begin(0);
-    _seq        = 0;
-    _lastSendMs = 0;
-    _state      = DroneState{};
+    _seq             = 0;
+    _lastSendMs      = 0;
+    _lastKeepaliveMs = 0;
+    _state           = DroneState{};
     Serial.println("[FlowWifi] Protocol ready — 192.168.169.1:8800");
 }
 
 void FlowWifiProtocol::update() {
-    if (!_state.active) return;  // stop sending when idle — post-landing packets re-arm the drone
     uint32_t now = millis();
+    if (!_state.active) {
+        // In idle: send a slow 8800 heartbeat so the drone knows a controller
+        // is connected (without it the drone ignores the first TakeOff command).
+        // throttle=0x00, cmd=0x00 — safe for a grounded disarmed drone and
+        // does not trigger altitude-hold re-arm (unlike the 0x80 idle packets
+        // the original code used).
+        if (now - _lastSendMs >= IDLE_HEARTBEAT_MS) {
+            _lastSendMs = now;
+            sendPacket();
+        }
+        // Also send the secondary keepalive on port 7099 as the KY UFO app does.
+        if (now - _lastKeepaliveMs >= KEEPALIVE_INTERVAL_MS) {
+            _lastKeepaliveMs = now;
+            sendKeepalive();
+        }
+        return;
+    }
     if (now - _lastSendMs < CONTROL_INTERVAL_MS) return;
     _lastSendMs = now;
     sendPacket();
@@ -48,7 +65,7 @@ void FlowWifiProtocol::setControl(uint8_t roll, uint8_t pitch,
 void FlowWifiProtocol::setIdle() {
     _state.roll     = 0x80;
     _state.pitch    = 0x80;
-    _state.throttle = 0x80;
+    _state.throttle = 0x00;  // 0x00 not 0x80 — 0x80 triggers altitude-hold re-arm on a grounded drone
     _state.yaw      = 0x80;
     _state.cmd      = DroneCmd::None;
     _state.active   = false;
@@ -91,6 +108,13 @@ void FlowWifiProtocol::sendPacket() {
     // pkt[38..87] = 0x00 (trailing zeros)
 
     _udp.beginPacket(DRONE_IP, CONTROL_PORT);
+    _udp.write(pkt, sizeof(pkt));
+    _udp.endPacket();
+}
+
+void FlowWifiProtocol::sendKeepalive() {
+    uint8_t pkt[2] = {0x01, 0x01};
+    _udp.beginPacket(DRONE_IP, KEEPALIVE_PORT);
     _udp.write(pkt, sizeof(pkt));
     _udp.endPacket();
 }

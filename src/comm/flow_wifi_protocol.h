@@ -55,13 +55,18 @@ public:
 
 private:
     void sendPacket();
+    void sendKeepalive();
 
     WiFiUDP    _udp;
     DroneState _state;
-    uint16_t   _seq         = 0;
-    uint32_t   _lastSendMs  = 0;
+    uint16_t   _seq              = 0;
+    uint32_t   _lastSendMs       = 0;
+    uint32_t   _lastKeepaliveMs  = 0;
 
     static const IPAddress    DRONE_IP;
     static constexpr uint16_t CONTROL_PORT        = 8800;
-    static constexpr uint32_t CONTROL_INTERVAL_MS =   40; ///< 25 Hz.
+    static constexpr uint16_t KEEPALIVE_PORT      = 7099;
+    static constexpr uint32_t CONTROL_INTERVAL_MS   =   40;  ///< 25 Hz.
+    static constexpr uint32_t IDLE_HEARTBEAT_MS     = 2000; ///< 0.5 Hz — keeps 8800 session alive in Idle without re-arm.
+    static constexpr uint32_t KEEPALIVE_INTERVAL_MS = 1000; ///< 1 Hz — matches KY UFO app.
 };

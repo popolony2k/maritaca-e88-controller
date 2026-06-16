@@ -207,7 +207,7 @@ maritaca-e88-controller/
 
 ---
 
-## Current Implementation Status (2026-06-13)
+## Current Implementation Status (2026-06-16)
 
 ### Working
 
@@ -225,13 +225,14 @@ maritaca-e88-controller/
 - **Screen auto-off/on**: screen turns off automatically when flight HUD activates; turns back on when BT/WiFi disconnects; D-pad LEFT toggles on/off while HUD is active. Uses `DisplayHal::setBrightness()` + `Display::sleep()`/`wake()`.
 - **FLOW-WIFI grey drone fully supported**: auto-detected, 88-byte protocol, direct throttle (altitude hold), TakeOff toggle arm/land. See FLOW-WIFI section below.
 - **Both drones confirmed to run altitude-hold firmware** (2026-06-11): `0x80` throttle = hold current altitude, deviation = continuous climb/descend rate. Throttle-hold gestures (ACCEL screen-button hold and BT-gamepad left stick/ZL/ZR) now snap back to `0x80` the instant the gesture ends, instead of leaving the drone climbing/descending indefinitely. See Throttle sections below.
+- **FLOW-WIFI Idle session maintenance** (2026-06-16): In Idle, `FlowWifiProtocol::update()` sends a slow 8800 heartbeat (every 2 s) with `throttle=0x00, cmd=0x00` so the drone knows a controller is connected; without this the drone ignores the first TakeOff command. Also sends the secondary keepalive `[0x01, 0x01]` to port 7099 at 1 Hz (matches KY UFO app behaviour). `setIdle()` uses `throttle=0x00` (not `0x80`) to prevent altitude-hold re-arm while the drone is grounded and disarmed.
 
 ### Open Issues
 
 1. **Drone rotates on ground before takeoff** — happens with board flat and still; suspected motor hardware fault or low battery. To diagnose: Serial-log `out.yaw` while board is flat — if 0x80 (128) it's hardware, not firmware. If not 0x80, gyro bias is leaking through dead zone → add startup calibration.
 2. **Camera FPS quality command** — Android app sends a quality command (30%/60%/100% FPS) captured in PCAP. Need to identify the packet and check drone's default. Send 30% on connect if not default.
 3. **BT gamepad (8BitDo) untested on hardware** — 8BitDo HID report format is the expected Switch-mode layout; first 200 raw reports are logged to Serial to allow byte-offset verification. Adjust `parseReport()` offsets if needed once physical controller is available.
-4. **iPega hardware buttons L1/RT/L3/R3 broken** — these generate no HID contacts; suspected ribbon cable faults. User plans to open controller. SELECT/START are reserved by controller firmware for mode-switching combos and never appear as HID contacts.
+4. **iPega L1/RT/L3/R3 — confirmed dead-end via HOME+A digitizer mode** — resoldering the switches restored them in Android's Standard Gamepad mode (HOME+X) but HOME+A "Direct Play" mode emulates a PUBG touchscreen layout where these buttons were never present, so they will never generate HID contacts on the ESP32 BLE connection. Mapping them would require switching to HOME+X + implementing BLE bonding — significant rework, not currently planned.
 
 ---
 
@@ -667,9 +668,19 @@ At boot, `WifiManager::scanForFirst()` scans for both known drone SSIDs and retu
 
 Key files: `src/comm/drone_protocol_base.h` (abstract interface), `src/comm/flow_wifi_protocol.h/.cpp` (implementation), `WifiManager::scanForFirst()` in `wifi_manager.h/.cpp`.
 
+### Idle Session Maintenance
+
+In Idle (`_state.active = false`), `FlowWifiProtocol::update()` does two things:
+
+1. **8800 heartbeat** — sends one 88-byte control packet every **2 s** (`IDLE_HEARTBEAT_MS`) with `throttle=0x00, cmd=0x00`. This keeps the drone's port-8800 session alive so the first TakeOff command is accepted. Without it the drone ignores the arm command on fresh boot because it has never seen any 8800 traffic.
+
+2. **7099 keepalive** — sends `[0x01, 0x01]` every **1 s** (`KEEPALIVE_INTERVAL_MS`) to the secondary keepalive port, matching KY UFO app behaviour.
+
+`setIdle()` uses `throttle=0x00` (not `0x80`): the heartbeat sends whatever is in `_state`, so `0x80` would trigger altitude-hold re-arm on a grounded drone. `0x00` is safe for a disarmed drone on the ground.
+
 ### Secondary Keepalive — UDP 7099
 
-Sent approximately once per second by the KY UFO app (not yet implemented in firmware — drone works without it):
+Sent by the KY UFO app at ~1 Hz (now also implemented in `FlowWifiProtocol`):
 
 ```text
 [ 0x01 | 0x01 ]
