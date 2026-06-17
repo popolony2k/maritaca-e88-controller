@@ -49,17 +49,26 @@ namespace DroneCmdEx {
 }
 
 /**
+ * @brief Eachine axis byte convention, shared by every protocol/controller module.
+ */
+namespace DroneAxis {
+    constexpr uint8_t MIN     = 0x00; ///< Minimum axis value.
+    constexpr uint8_t NEUTRAL = 0x80; ///< Neutral/centered axis value (hover, no roll/pitch/yaw).
+    constexpr uint8_t MAX     = 254;  ///< Maximum axis value (0xFE).
+}
+
+/**
  * @brief Snapshot of the last control values written to the drone.
  *
- * All axis values use the Eachine convention: 0x80 = neutral, 0x00 = min, 0xFE = max.
+ * All axis values use the Eachine convention: see DroneAxis (0x80 = neutral, 0x00 = min, 0xFE = max).
  */
 struct DroneState {
-    uint8_t roll     = 0x80;          ///< Roll axis (0x80 = neutral).
-    uint8_t pitch    = 0x80;          ///< Pitch axis (0x80 = neutral).
-    uint8_t throttle = 0x80;          ///< Throttle (0x80 = neutral/hover).
-    uint8_t yaw      = 0x80;          ///< Yaw axis (0x80 = neutral).
-    uint8_t cmd      = DroneCmd::None; ///< Active command flag byte.
-    bool    active   = false;          ///< True when sending control; false in keepalive mode.
+    uint8_t roll     = DroneAxis::NEUTRAL; ///< Roll axis.
+    uint8_t pitch    = DroneAxis::NEUTRAL; ///< Pitch axis.
+    uint8_t throttle = DroneAxis::NEUTRAL; ///< Throttle (neutral = hover).
+    uint8_t yaw      = DroneAxis::NEUTRAL; ///< Yaw axis.
+    uint8_t cmd      = DroneCmd::None;     ///< Active command flag byte.
+    bool    active   = false;              ///< True when sending control; false in keepalive mode.
 };
 
 /**

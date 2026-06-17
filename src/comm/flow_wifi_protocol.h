@@ -74,4 +74,30 @@ private:
     static constexpr uint32_t CONTROL_INTERVAL_MS   =   40;  ///< 25 Hz.
     static constexpr uint32_t IDLE_HEARTBEAT_MS     = 2000; ///< 0.5 Hz — keeps 8800 session alive in Idle without re-arm.
     static constexpr uint32_t KEEPALIVE_INTERVAL_MS = 1000; ///< 1 Hz — matches KY UFO app.
+
+    // ---- Packet sizes ------------------------------------------------------
+    static constexpr size_t  PACKET_SIZE       = 88; ///< Total outer packet size (bytes).
+    static constexpr size_t  INNER_OFFSET      = 18; ///< Inner packet offset within the outer packet.
+    static constexpr size_t  INNER_PACKET_SIZE = 20; ///< Inner control packet size (bytes).
+
+    // ---- Outer header bytes (18 bytes) --------------------------------------
+    static constexpr uint8_t OUTER_SYNC     = 0xEF; ///< Outer envelope sync byte.
+    static constexpr uint8_t OUTER_VERSION  = 0x02; ///< Outer envelope version/type byte.
+    static constexpr uint8_t OUTER_LEN_LO   = 0x58; ///< Payload length LE low byte (88 decimal).
+    static constexpr uint8_t OUTER_LEN_HI   = 0x00; ///< Payload length LE high byte.
+    static constexpr uint8_t OUTER_FLAG_A   = 0x02; ///< Outer flags byte ("02 02" pair, byte 1 of 2).
+    static constexpr uint8_t OUTER_FLAG_B   = 0x02; ///< Outer flags byte ("02 02" pair, byte 2 of 2).
+    static constexpr uint8_t OUTER_FLAG_C   = 0x00; ///< Outer flags byte ("00 01" pair, byte 1 of 2).
+    static constexpr uint8_t OUTER_FLAG_D   = 0x01; ///< Outer flags byte ("00 01" pair, byte 2 of 2).
+    static constexpr uint8_t INNER_LEN_LO   = 0x14; ///< Inner packet length LE low byte (20 decimal).
+    static constexpr uint8_t INNER_LEN_HI   = 0x00; ///< Inner packet length LE high byte.
+
+    // ---- Inner control packet bytes (20 bytes at INNER_OFFSET) ---------------
+    static constexpr uint8_t INNER_SYNC        = 0x66; ///< Inner packet sync byte — same as E58 header.
+    static constexpr uint8_t INNER_LENGTH_BYTE = 0x14;  ///< Inner packet's own length field (20 decimal).
+    static constexpr uint8_t INNER_CONST_FLAG  = 0x02;  ///< Constant flag byte; also XOR'd into the checksum.
+    static constexpr uint8_t INNER_FOOTER      = 0x99;  ///< Inner packet footer — same as E58 footer.
+
+    // ---- Secondary keepalive (port 7099) --------------------------------------
+    static constexpr uint8_t KEEPALIVE_BYTE = 0x01; ///< Both bytes of the [0x01, 0x01] keepalive packet.
 };

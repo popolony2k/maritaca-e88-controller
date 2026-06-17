@@ -72,4 +72,13 @@ private:
     static constexpr uint32_t APP_MODE_SETTLE_MS    =  500;
     static constexpr uint32_t APP_MODE_ENTRY_MS     = 1000;
     static constexpr uint32_t APP_MODE_INTERVAL_MS  =  150;
+
+    // ---- Protocol bytes --------------------------------------------------
+    static constexpr uint8_t PACKET_HEADER     = 0x66; ///< Control packet header.
+    static constexpr uint8_t PACKET_FOOTER     = 0x99; ///< Control packet footer.
+    static constexpr uint8_t KEEPALIVE_HEADER  = 0xAA; ///< Keepalive header — bitwise complement of PACKET_HEADER.
+    static constexpr uint8_t KEEPALIVE_FOOTER  = 0x55; ///< Keepalive footer — bitwise complement of PACKET_FOOTER.
+    static constexpr uint8_t APP_MODE_CMD      = 0x42; ///< App-mode command byte (first byte of enter/exit).
+    static constexpr uint8_t APP_MODE_ENTER    = 0x76; ///< App-mode enter sub-command (second byte).
+    static constexpr uint8_t APP_MODE_EXIT     = 0x77; ///< App-mode exit sub-command (second byte).
 };

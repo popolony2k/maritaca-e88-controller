@@ -63,48 +63,48 @@ void FlowWifiProtocol::setControl(uint8_t roll, uint8_t pitch,
 }
 
 void FlowWifiProtocol::setIdle() {
-    _state.roll     = 0x80;
-    _state.pitch    = 0x80;
-    _state.throttle = 0x00;  // 0x00 not 0x80 — 0x80 triggers altitude-hold re-arm on a grounded drone
-    _state.yaw      = 0x80;
+    _state.roll     = DroneAxis::NEUTRAL;
+    _state.pitch    = DroneAxis::NEUTRAL;
+    _state.throttle = DroneAxis::MIN;  // MIN not NEUTRAL — NEUTRAL triggers altitude-hold re-arm on a grounded drone
+    _state.yaw      = DroneAxis::NEUTRAL;
     _state.cmd      = DroneCmd::None;
     _state.active   = false;
 }
 
 void FlowWifiProtocol::sendPacket() {
-    uint8_t pkt[88];
+    uint8_t pkt[PACKET_SIZE];
     memset(pkt, 0, sizeof(pkt));
 
     // ---- Outer header (18 bytes) ----------------------------------------
-    pkt[0]  = 0xEF;
-    pkt[1]  = 0x02;
-    pkt[2]  = 0x58;                         // payload length LE: 88 = 0x58
-    pkt[3]  = 0x00;
-    pkt[4]  = 0x02;
-    pkt[5]  = 0x02;
-    pkt[6]  = 0x00;
-    pkt[7]  = 0x01;
+    pkt[0]  = OUTER_SYNC;
+    pkt[1]  = OUTER_VERSION;
+    pkt[2]  = OUTER_LEN_LO;
+    pkt[3]  = OUTER_LEN_HI;
+    pkt[4]  = OUTER_FLAG_A;
+    pkt[5]  = OUTER_FLAG_B;
+    pkt[6]  = OUTER_FLAG_C;
+    pkt[7]  = OUTER_FLAG_D;
     // pkt[8..11] = 0x00 (flags + padding)
     pkt[12] = (uint8_t)(_seq & 0xFF);        // sequence counter LE
     pkt[13] = (uint8_t)(_seq >> 8);
     // pkt[14..15] = 0x00
-    pkt[16] = 0x14;                          // inner packet length LE: 20 = 0x14
-    pkt[17] = 0x00;
+    pkt[16] = INNER_LEN_LO;
+    pkt[17] = INNER_LEN_HI;
     _seq++;
 
-    // ---- Inner control packet (20 bytes at offset 18) --------------------
-    uint8_t* inner = pkt + 18;
-    inner[0]  = 0x66;
-    inner[1]  = 0x14;
+    // ---- Inner control packet (20 bytes at offset INNER_OFFSET) ----------
+    uint8_t* inner = pkt + INNER_OFFSET;
+    inner[0]  = INNER_SYNC;
+    inner[1]  = INNER_LENGTH_BYTE;
     inner[2]  = _state.roll;
     inner[3]  = _state.pitch;
     inner[4]  = _state.throttle;
     inner[5]  = _state.yaw;
     inner[6]  = _state.cmd;
-    inner[7]  = 0x02;
+    inner[7]  = INNER_CONST_FLAG;
     // inner[8..17] = 0x00 (padding)
-    inner[18] = _state.roll ^ _state.pitch ^ _state.throttle ^ _state.yaw ^ _state.cmd ^ 0x02;
-    inner[19] = 0x99;
+    inner[18] = _state.roll ^ _state.pitch ^ _state.throttle ^ _state.yaw ^ _state.cmd ^ INNER_CONST_FLAG;
+    inner[19] = INNER_FOOTER;
     // pkt[38..87] = 0x00 (trailing zeros)
 
     _udp.beginPacket(DRONE_IP, CONTROL_PORT);
@@ -113,7 +113,7 @@ void FlowWifiProtocol::sendPacket() {
 }
 
 void FlowWifiProtocol::sendKeepalive() {
-    uint8_t pkt[2] = {0x01, 0x01};
+    uint8_t pkt[2] = {KEEPALIVE_BYTE, KEEPALIVE_BYTE};
     _udp.beginPacket(DRONE_IP, KEEPALIVE_PORT);
     _udp.write(pkt, sizeof(pkt));
     _udp.endPacket();
