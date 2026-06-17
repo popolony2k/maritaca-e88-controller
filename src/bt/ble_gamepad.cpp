@@ -26,6 +26,14 @@
 // ---- UUIDs ----
 static const BLEUUID HID_SERVICE_UUID((uint16_t)0x1812);
 static const BLEUUID HID_REPORT_UUID ((uint16_t)0x2A4D);
+static const BLEUUID HID_REPORT_MAP_UUID((uint16_t)0x2A4B);
+
+// ---- BLE scan parameters ----
+static constexpr uint16_t BLE_SCAN_INTERVAL_MS   =  200; ///< Scan interval.
+static constexpr uint16_t BLE_SCAN_WINDOW_MS     =  180; ///< Scan active window — ~90% duty cycle.
+static constexpr uint32_t BLE_SCAN_DURATION_S    =    5; ///< Timed scan window length.
+static constexpr uint32_t BLE_RESCAN_INTERVAL_MS = 6000; ///< Restart scan window every ~6 s while not connected.
+static constexpr size_t   HID_REPORT_BUF_SIZE    =   32; ///< Max raw HID report size buffered.
 
 // ---- Shared state (accessed from BLE callbacks + main task) ----
 static BLEAdvertisedDevice* _foundDevice = nullptr;
@@ -34,7 +42,7 @@ static volatile bool        _connected   = false;
 static volatile bool        _doScan      = false;
 
 static volatile bool _reportReady = false;
-static uint8_t       _reportBuf[32];
+static uint8_t       _reportBuf[HID_REPORT_BUF_SIZE];
 static uint8_t       _reportLen  = 0;
 
 static BLEClient*    _client     = nullptr;
@@ -101,11 +109,11 @@ void BleGamepad::startScan() {
     _lastScanMs = millis();
     BLEScan* scan = BLEDevice::getScan();
     scan->setAdvertisedDeviceCallbacks(&_scanCb);
-    scan->setInterval(200);
-    scan->setWindow(180);      // ~90% duty cycle for max discovery chance
-    scan->setActiveScan(true); // active scan — needed to catch HID UUID in scan responses
-    scan->clearResults();       // free heap from previous window
-    scan->start(5, nullptr, false);  // 5 s timed window; update() restarts it
+    scan->setInterval(BLE_SCAN_INTERVAL_MS);
+    scan->setWindow(BLE_SCAN_WINDOW_MS);  // ~90% duty cycle for max discovery chance
+    scan->setActiveScan(true);            // active scan — needed to catch HID UUID in scan responses
+    scan->clearResults();                 // free heap from previous window
+    scan->start(BLE_SCAN_DURATION_S, nullptr, false);  // timed window; update() restarts it
 }
 
 void BleGamepad::doConnect() {
@@ -139,9 +147,8 @@ void BleGamepad::doConnect() {
         return;
     }
 
-    // Print HID Report Map (0x2A4B) to reveal the exact report format
-    static const BLEUUID REPORT_MAP_UUID((uint16_t)0x2A4B);
-    BLERemoteCharacteristic* reportMap = hidService->getCharacteristic(REPORT_MAP_UUID);
+    // Print HID Report Map to reveal the exact report format
+    BLERemoteCharacteristic* reportMap = hidService->getCharacteristic(HID_REPORT_MAP_UUID);
     if (reportMap) {
         std::string desc = reportMap->readValue();
         Serial.printf("[BLE] HID descriptor (%u bytes):", (unsigned)desc.size());
@@ -205,8 +212,8 @@ void BleGamepad::update() {
         Serial.println("[BLE] Scanning...");
     }
 
-    // Restart timed scan window when it expires (every ~6 s)
-    if (!_connected && !_doConnect && (millis() - _lastScanMs >= 6000)) {
+    // Restart timed scan window when it expires
+    if (!_connected && !_doConnect && (millis() - _lastScanMs >= BLE_RESCAN_INTERVAL_MS)) {
         startScan();
     }
 
@@ -243,8 +250,10 @@ void BleGamepad::update() {
 //     bits 20–31:Y coordinate (0–2200, top=0)
 //   Center positions measured from observed rest-touch data:
 //     Left  stick: X≈523  Y≈450    Right stick: X≈533  Y≈1650
+static constexpr uint32_t DEBUG_REPORT_LOG_COUNT = 200; ///< Log this many raw reports to Serial, then stop.
+
 void BleGamepad::parseReport(const uint8_t* data, uint8_t len) {
-    bool debug = (_debugCount < 200);
+    bool debug = (_debugCount < DEBUG_REPORT_LOG_COUNT);
     if (debug) {
         Serial.printf("[BLE] report[%u] len=%u:", _debugCount, len);
         for (uint8_t i = 0; i < len; i++) Serial.printf(" %02X", data[i]);
@@ -258,7 +267,15 @@ void BleGamepad::parseReport(const uint8_t* data, uint8_t len) {
     // Touchscreen is portrait-oriented internally; held in landscape.
     // Physical UP/DOWN maps to touchscreen X (0–1200); UP = X increases.
     // Physical LEFT/RIGHT maps to touchscreen Y (0–2200); LEFT = Y increases.
-    if (len == 17) {
+    static constexpr uint8_t IPEGA_REPORT_LEN        =  17; ///< Total report length.
+    static constexpr int     IPEGA_NUM_CONTACTS      =   4; ///< Touch contact blocks per report.
+    static constexpr int     IPEGA_BYTES_PER_CONTACT =   4; ///< Bytes per contact block.
+    static constexpr uint8_t IPEGA_TIP_SWITCH_MASK   = 0x01; ///< Tip Switch bit within contact byte 0.
+    static constexpr uint8_t IPEGA_CONTACT_ID_MASK   = 0x0F; ///< Contact ID nibble mask within contact byte 0.
+    static constexpr uint8_t IPEGA_CONTACT_ID_SHIFT  =    4; ///< Contact ID nibble shift within contact byte 0.
+    static constexpr int     IPEGA_STICK_Y_BOUNDARY  = 1000; ///< Y threshold splitting left/right stick zones.
+    static constexpr float   IPEGA_THROTTLE_DEADBAND = 0.08f; ///< Dead band for throttle up/down classification.
+    if (len == IPEGA_REPORT_LEN) {
         auto getX = [](const uint8_t* b) -> int {
             return (int)((uint16_t)b[1] | (((uint16_t)(b[2] & 0x0F)) << 8));
         };
@@ -299,10 +316,10 @@ void BleGamepad::parseReport(const uint8_t* data, uint8_t len) {
         static constexpr int N_BTNS  = (int)(sizeof(kBtns) / sizeof(kBtns[0]));
         static constexpr int BTN_TOL = 30;
 
-        for (int i = 0; i < 4; i++) {
-            const uint8_t* blk = data + i * 4;
-            uint8_t tipSwitch = blk[0] & 0x01;
-            uint8_t cid       = (blk[0] >> 4) & 0x0F;
+        for (int i = 0; i < IPEGA_NUM_CONTACTS; i++) {
+            const uint8_t* blk = data + i * IPEGA_BYTES_PER_CONTACT;
+            uint8_t tipSwitch = blk[0] & IPEGA_TIP_SWITCH_MASK;
+            uint8_t cid       = (blk[0] >> IPEGA_CONTACT_ID_SHIFT) & IPEGA_CONTACT_ID_MASK;
             int x = getX(blk), y = getY(blk);
 
             if (debug) {
@@ -324,13 +341,13 @@ void BleGamepad::parseReport(const uint8_t* data, uint8_t len) {
             if (isBtn) continue;
 
             // Not a button — classify as stick by Y zone
-            if (y < 1000) {                            // left stick area
+            if (y < IPEGA_STICK_Y_BOUNDARY) {           // left stick area
                 // LEFT/RIGHT (Y) → yaw;  UP/DOWN (X) → throttle
                 _axes.yaw = clamp((y - LY_CTR) / RANGE_LY);
                 float lthrottle = (x - LX_CTR) / RANGE_LX;  // UP → x increases → positive
                 if (debug) Serial.printf("[THR] x=%d lthrottle=%.2f\n", x, lthrottle);
-                _axes.throttleUp   = (lthrottle >  0.08f) ? clamp(lthrottle) : 0.0f;
-                _axes.throttleDown = (lthrottle < -0.08f) ? clamp(-lthrottle) : 0.0f;
+                _axes.throttleUp   = (lthrottle >  IPEGA_THROTTLE_DEADBAND) ? clamp(lthrottle) : 0.0f;
+                _axes.throttleDown = (lthrottle < -IPEGA_THROTTLE_DEADBAND) ? clamp(-lthrottle) : 0.0f;
             } else {                                   // right stick area
                 // LEFT/RIGHT (Y) → roll;  UP/DOWN (X) → pitch
                 _axes.roll  = clamp((y - RY_CTR) / RANGE_RY);
@@ -341,20 +358,31 @@ void BleGamepad::parseReport(const uint8_t* data, uint8_t len) {
     }
 
     // --- 8BitDo Switch mode (7 or 8 bytes, unsigned 8-bit axes centered at 128) ---
-    uint8_t o = (len == 8 && data[0] == 0x01) ? 1 : 0;
-    if ((len - o) < 7) return;
+    static constexpr uint8_t SWITCH_REPORT_ID_PREFIX = 0x01; ///< Optional leading Report ID byte.
+    static constexpr uint8_t SWITCH_REPORT_ID_LEN    =    8; ///< Report length when the Report ID byte is present.
+    static constexpr uint8_t SWITCH_MIN_REPORT_LEN   =    7; ///< Minimum valid report length (without Report ID).
+    static constexpr uint8_t BYTE_BUTTONS_LO         =    0; ///< Offset: Buttons[7:0].
+    static constexpr uint8_t BYTE_LEFT_STICK_X       =    3; ///< Offset: Left stick X.
+    static constexpr uint8_t BYTE_LEFT_STICK_Y       =    4; ///< Offset: Left stick Y.
+    static constexpr uint8_t BYTE_RIGHT_STICK_X      =    5; ///< Offset: Right stick X.
+    static constexpr uint8_t AXIS_CENTER_8BIT        =  128; ///< Raw axis center (0-255 range).
+    static constexpr uint8_t BTN_ZR_BIT              = 0x80; ///< ZR trigger bit in Buttons[7:0].
+    static constexpr uint8_t BTN_ZL_BIT              = 0x40; ///< ZL trigger bit in Buttons[7:0].
 
-    uint8_t btn0 = data[o + 0];
-    uint8_t lx   = data[o + 3];
-    uint8_t ly   = data[o + 4];
-    uint8_t rx   = data[o + 5];
+    uint8_t o = (len == SWITCH_REPORT_ID_LEN && data[0] == SWITCH_REPORT_ID_PREFIX) ? 1 : 0;
+    if ((len - o) < SWITCH_MIN_REPORT_LEN) return;
 
-    auto norm = [](uint8_t v) { return (v - 128) / 128.0f; };
+    uint8_t btn0 = data[o + BYTE_BUTTONS_LO];
+    uint8_t lx   = data[o + BYTE_LEFT_STICK_X];
+    uint8_t ly   = data[o + BYTE_LEFT_STICK_Y];
+    uint8_t rx   = data[o + BYTE_RIGHT_STICK_X];
+
+    auto norm = [](uint8_t v) { return (v - AXIS_CENTER_8BIT) / (float)AXIS_CENTER_8BIT; };
 
     _axes.roll         = clamp( norm(lx));
     _axes.pitch        = clamp(-norm(ly));  // invert Y: push forward = positive
     _axes.yaw          = clamp( norm(rx));
-    _axes.throttleUp   = (btn0 & 0x80) ? 1.0f : 0.0f;  // ZR
-    _axes.throttleDown = (btn0 & 0x40) ? 1.0f : 0.0f;  // ZL
+    _axes.throttleUp   = (btn0 & BTN_ZR_BIT) ? 1.0f : 0.0f;
+    _axes.throttleDown = (btn0 & BTN_ZL_BIT) ? 1.0f : 0.0f;
     _axes.connected    = true;
 }
