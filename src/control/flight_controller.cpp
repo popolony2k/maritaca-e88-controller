@@ -282,11 +282,22 @@ void FlightController::handleGamepadButtons(bool wifiOk) {
                    ? FlightState::Calibrating : FlightState::Flying);
         return;
     }
-    // B — land (Flying only)
-    if ((pressed & GamepadBtn::B) && _state == FlightState::Flying) {
-        Serial.println("[Flight] Land (B)");
-        enterState(FlightState::Landing);
-        return;
+    // B — land (Flying only). Requires a double-click: a single accidental B
+    // press right after the drone self-lands via stick (ground sensor auto-
+    // disarm) would otherwise send the TakeOff toggle and re-launch it.
+    if (pressed & GamepadBtn::B) {
+        uint32_t now = millis();
+        if (_bClickPending && (now - _lastBPressMs) <= DOUBLE_CLICK_MS) {
+            _bClickPending = false;
+            if (_state == FlightState::Flying) {
+                Serial.println("[Flight] Land (B double-click)");
+                enterState(FlightState::Landing);
+                return;
+            }
+        } else {
+            _bClickPending = true;
+            _lastBPressMs  = now;
+        }
     }
     // D-pad RIGHT — manual arm (grey drone only, Idle + WiFi):
     // enters Flying without auto-takeoff command; user does double-UP to lift off low.
