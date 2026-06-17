@@ -207,14 +207,14 @@ maritaca-e88-controller/
 
 ---
 
-## Current Implementation Status (2026-06-16)
+## Current Implementation Status (2026-06-17)
 
 ### Working
 
 - WiFi connection to drone AP (`WIFI_8K_Wf48702`) — auto-detected at boot via `WifiManager::scanForFirst()`
 - App mode activation (`42 76` → port 8080) — drone switches from RF to WiFi control
 - Flight state machine: Idle → Calibrating (1.5 s) → Arming (Unlock + TakeOff) → Flying → Landing/Emergency
-- Accel/tilt control: roll (left/right tilt), pitch (forward/back tilt, drives drone pitch directly), yaw (gz gyro rate); throttle via screen-button hold gesture — see Throttle section below
+- Accel/tilt control: roll (left/right tilt), pitch (forward/back tilt, drives drone pitch directly); throttle via screen-button hold gesture — see Throttle section below
 - Battery level display via GPIO8 (ADC2) voltage divider on the Atomic Battery Base (ETA9085 — no I2C)
 - Display HUD: WiFi status, flight state, roll/pitch/yaw/throttle bars, battery
 - **Mode selection screen** at boot: ACCEL TILT / BT GAMEPAD with 3 s countdown; button click cycles options and resets timer; default = BT GAMEPAD
@@ -227,14 +227,16 @@ maritaca-e88-controller/
 - **Both drones confirmed to run altitude-hold firmware** (2026-06-11): `0x80` throttle = hold current altitude, deviation = continuous climb/descend rate. Throttle-hold gestures (ACCEL screen-button hold and BT-gamepad left stick/ZL/ZR) now snap back to `0x80` the instant the gesture ends, instead of leaving the drone climbing/descending indefinitely. See Throttle sections below.
 - **FLOW-WIFI Idle session maintenance** (2026-06-16): In Idle, `FlowWifiProtocol::update()` sends a slow 8800 heartbeat (every 2 s) with `throttle=0x00, cmd=0x00` so the drone knows a controller is connected; without this the drone ignores the first TakeOff command. Also sends the secondary keepalive `[0x01, 0x01]` to port 7099 at 1 Hz (matches KY UFO app behaviour). `setIdle()` uses `throttle=0x00` (not `0x80`) to prevent altitude-hold re-arm while the drone is grounded and disarmed.
 - **B button requires double-click to land** (2026-06-17): mitigates Dr.One re-arming after a stick-landing — see Resolved Issues below.
+- **ACCEL mode yaw redesigned as single-click toggle + tilt** (2026-06-17): replaces the old gyro-rate-based yaw (hard to control reliably). See Yaw section under Accel Controller Tuning Parameters below.
 
 ### Open Issues
 
-1. **Drone rotates on ground before takeoff** — happens with board flat and still; suspected motor hardware fault or low battery. To diagnose: Serial-log `out.yaw` while board is flat — if 0x80 (128) it's hardware, not firmware. If not 0x80, gyro bias is leaking through dead zone → add startup calibration.
-2. **BT gamepad (8BitDo) untested on hardware** — 8BitDo HID report format is the expected Switch-mode layout; first 200 raw reports are logged to Serial to allow byte-offset verification. Adjust `parseReport()` offsets if needed once physical controller is available.
-3. **iPega L1/RT/L3/R3 — confirmed dead-end via HOME+A digitizer mode** — resoldering the switches restored them in Android's Standard Gamepad mode (HOME+X) but HOME+A "Direct Play" mode emulates a PUBG touchscreen layout where these buttons were never present, so they will never generate HID contacts on the ESP32 BLE connection. Mapping them would require switching to HOME+X + implementing BLE bonding — significant rework, not currently planned.
+1. **BT gamepad (8BitDo) untested on hardware** — 8BitDo HID report format is the expected Switch-mode layout; first 200 raw reports are logged to Serial to allow byte-offset verification. Adjust `parseReport()` offsets if needed once physical controller is available.
+2. **iPega L1/RT/L3/R3 — confirmed dead-end via HOME+A digitizer mode** — resoldering the switches restored them in Android's Standard Gamepad mode (HOME+X) but HOME+A "Direct Play" mode emulates a PUBG touchscreen layout where these buttons were never present, so they will never generate HID contacts on the ESP32 BLE connection. Mapping them would require switching to HOME+X + implementing BLE bonding — significant rework, not currently planned.
 
 ### Resolved Issues
+
+- **Drone rotates on ground before takeoff (mitigated 2026-06-17)** — was suspected to be either motor hardware imbalance or gyro bias leaking through yaw's dead zone while gyro-rate-based yaw was ambiently active. Resolved as a side effect of the yaw redesign: yaw is no longer gyro-rate based at all, so there is no path left for ambient drift to leak through — yaw can only ever be non-neutral during the explicit single-click-toggle + tilt gesture. If ground rotation is ever observed again, it would now point conclusively to motor/hardware, not firmware.
 
 - **Dr.One re-arms when B is pressed after a stick-landing (mitigated 2026-06-17)** — `TakeOff` (0x01) is a toggle, not absolute, and the drone has no telemetry feedback to tell `FlightController` it auto-disarmed itself on touchdown. User visually confirmed (not via PCAP) that the official KY UFO app has the exact same limitation — no protocol-level fix exists. Mitigation: B now requires a **double-click** (within `DOUBLE_CLICK_MS` = 1000 ms) to trigger Landing, via `_bClickPending`/`_lastBPressMs` in `FlightController::handleGamepadButtons()`. This doesn't fix the underlying ambiguity but eliminates the actual trigger: a reflexive single tap of B right after touchdown (whether landed via stick or via the normal B-landing sequence) no longer sends anything. Confirmed working by user — single presses after landing no longer re-arm the drone.
 
@@ -250,18 +252,15 @@ static constexpr float MAX_TILT_DEG    = 20.0f;
 static constexpr float TILT_DEAD_ZONE  = 10.0f;
 static constexpr float TILT_EXPO       =  0.5f;
 
-// Yaw (gyro Z rate)
-static constexpr float MAX_YAW_RATE    = 120.0f;
-static constexpr float YAW_DEAD_ZONE   =  20.0f;
-static constexpr float YAW_EXPO        =   0.5f;
-
 // Pitch (forward/backward tilt — drives drone pitch directly, NOT throttle)
 static constexpr float MAX_PITCH_DEG   = 20.0f;
 static constexpr float PITCH_DEAD_ZONE = 10.0f;
 static constexpr float PITCH_EXPO      =  0.5f;
 
 // Slew rate limiter
-static constexpr float SLEW_RATE       =  3.0f;  // units/frame at 25 Hz
+static constexpr float SLEW_RATE       =  3.0f;  // units/frame at 25 Hz, roll/pitch
+static constexpr float YAW_SLEW_RATE   =  5.0f;  // units/frame at 25 Hz, yaw mode — snappier
+static constexpr float YAW_DEAD_ZONE   =  7.0f;  // degrees, yaw mode — smaller than TILT_DEAD_ZONE
 
 // Throttle (neutral/hover)
 static constexpr float THROTTLE_INIT   = 128.0f;
@@ -273,8 +272,33 @@ static constexpr float ANGLE_ALPHA     =  0.25f;
 **Axis sign conventions:**
 
 - Roll: negated (`-_filteredRoll`) — drone nose faces away from user, so left/right is mirrored
-- Yaw: negated (`-_filteredYaw`) — same reason
 - Pitch: NOT negated, directly mapped — tilt forward = fly forward
+
+### Yaw — single-click toggle, reuses roll's tilt gesture (ACCEL mode)
+
+Yaw is **not** gyro-rate based — an earlier implementation drove yaw from the gyroscope
+Z-axis rotation rate (physically twisting the board flat), but this proved a hard gesture
+to control reliably and was replaced (2026-06-17).
+
+Single-click the screen button while Flying to toggle **yaw mode** on/off
+(`FlightController::_yawModeActive`, persistent until clicked again — not a hold gesture).
+While ON, the same left/right tilt that normally drives roll is routed to **yaw** instead;
+roll is suppressed to neutral (`0x80`) for the duration. Pitch and throttle are unaffected
+and still work normally at the same time. Click again to switch back to roll.
+
+Yaw mode uses its own tuning (`YAW_DEAD_ZONE = 7.0f`, `YAW_SLEW_RATE = 5.0f`) — a smaller
+dead zone and faster slew than plain roll (`TILT_DEAD_ZONE = 10.0f`, `SLEW_RATE = 3.0f`),
+since yaw is a deliberate momentary gesture rather than sustained tilt and benefits from a
+snappier feel. Implemented in `AccelController::update(imu, out, yawModeActive)` —
+`_currentRoll`'s slewed value is directly reused as the yaw output when active, no separate
+yaw filter state.
+
+**Side effect:** this also resolves the previous "drone rotates on ground before takeoff"
+issue (gyro bias suspected) — yaw can now only ever be non-neutral during this explicit,
+deliberate gesture; there is no gyro-rate path left for ambient drift to leak through.
+
+In BluetoothControl mode, yaw is unaffected by this — the right stick drives it directly via
+`GamepadController`, gated by the same single-click toggle (`_yawEnabled`) as before.
 
 ### Throttle — button-hold gesture, altitude-hold on both drones
 

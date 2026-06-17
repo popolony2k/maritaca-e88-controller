@@ -55,15 +55,16 @@ void FlightController::enterState(FlightState s, bool sendModeCmd) {
     _btnIsHold       = false;
     _buttonDown      = false;
     _clickCount      = 0;
+    _yawModeActive   = false;
 
     _oneShotCmd   = DroneCmd::None;
     _oneShotUntil = 0;
     _headless     = false;
 
-    // Yaw defaults ON for gamepad (right stick controls it intentionally),
-    // OFF for accel (gyro Z drift would cause unwanted rotation).
-    _yawEnabled = (s == FlightState::Flying &&
-                   _mode == OperationMode::BluetoothControl);
+    // Always on while Flying. Gamepad mode: right stick drives yaw directly.
+    // AccelControl mode: AccelController only produces non-neutral yaw during
+    // the double-click+hold gesture, so this gate is effectively a no-op there.
+    _yawEnabled = (s == FlightState::Flying);
 
     _accel.setEnabled(s == FlightState::Flying);
     if (s == FlightState::Flying) {
@@ -124,8 +125,17 @@ void FlightController::handleButton(bool wifiOk) {
         _clickCount = 0;
         if (count == 2) handleDoubleClick(wifiOk);
         if (count == 1 && _state == FlightState::Flying) {
-            _yawEnabled = !_yawEnabled;
-            Serial.printf("[Flight] Yaw %s\n", _yawEnabled ? "ON" : "OFF");
+            if (_mode == OperationMode::BluetoothControl) {
+                _yawEnabled = !_yawEnabled;
+                Serial.printf("[Flight] Yaw %s\n", _yawEnabled ? "ON" : "OFF");
+            } else {
+                // AccelControl: toggle yaw mode — while on, tilt L/R drives
+                // yaw instead of roll (see AccelController::update()).
+                _yawModeActive = !_yawModeActive;
+                Serial.printf("[Flight] Yaw mode %s (tilt L/R = %s)\n",
+                              _yawModeActive ? "ON" : "OFF",
+                              _yawModeActive ? "yaw" : "roll");
+            }
         }
     }
 }
@@ -207,7 +217,7 @@ void FlightController::runState(const ImuData& imu, bool wifiOk) {
                     float delta = _btnHoldIsDown ? -THROTTLE_HOLD_RATE_DOWN : THROTTLE_HOLD_RATE_UP;
                     _accel.adjustThrottle(delta);
                 }
-                _accel.update(imu, cs);
+                _accel.update(imu, cs, _yawModeActive);
 
                 // Both drones run altitude-hold firmware: throttle is a momentary
                 // climb/descend rate relative to hover (0x80), not an accumulated

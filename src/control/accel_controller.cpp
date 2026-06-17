@@ -36,11 +36,9 @@ uint8_t AccelController::mapAxis(float value, float maxRange, float deadZone, fl
 void AccelController::begin() {
     _filteredRoll  = 0.0f;
     _filteredPitch = 0.0f;
-    _filteredYaw   = 0.0f;
     _throttle      = THROTTLE_INIT;
     _currentRoll   = 128.0f;
     _currentPitch  = 128.0f;
-    _currentYaw    = 128.0f;
 }
 
 void AccelController::adjustThrottle(float delta) {
@@ -49,7 +47,7 @@ void AccelController::adjustThrottle(float delta) {
     if (_throttle > 254.0f) _throttle = 254.0f;
 }
 
-void AccelController::update(const ImuData& imu, DroneState& out) {
+void AccelController::update(const ImuData& imu, DroneState& out, bool yawModeActive) {
     if (!_enabled || !imu.valid) return;
 
     // --- Tilt angles from accelerometer ---
@@ -58,35 +56,37 @@ void AccelController::update(const ImuData& imu, DroneState& out) {
     float rollDeg  = atan2f(imu.ay, sqrtf(imu.ax * imu.ax + imu.az * imu.az))
                      * (180.0f / (float)M_PI);
 
-    // --- Yaw from gyroscope Z rate ---
-    float yawRate = imu.gz;
-
     // --- Low-pass filter ---
     _filteredRoll  = ANGLE_ALPHA * rollDeg  + (1.0f - ANGLE_ALPHA) * _filteredRoll;
     _filteredPitch = ANGLE_ALPHA * pitchDeg + (1.0f - ANGLE_ALPHA) * _filteredPitch;
-    _filteredYaw   = ANGLE_ALPHA * yawRate  + (1.0f - ANGLE_ALPHA) * _filteredYaw;
 
     // Roll negated: drone nose faces away from user, so left/right is mirrored.
     // Pitch: tilt forward = fly forward, tilt back = fly backward.
     //        If direction feels inverted, negate _filteredPitch below.
-    float targetRoll  = (float)mapAxis(-_filteredRoll, MAX_TILT_DEG,  TILT_DEAD_ZONE,  TILT_EXPO);
-    float targetPitch = (float)mapAxis(_filteredPitch,  MAX_PITCH_DEG, PITCH_DEAD_ZONE, PITCH_EXPO);
-    float targetYaw   = (float)mapAxis(-_filteredYaw,   MAX_YAW_RATE,  YAW_DEAD_ZONE,   YAW_EXPO);
+    // Yaw mode uses a smaller dead zone and faster slew — snappier than roll's
+    // normal feel, since yaw is a deliberate momentary gesture, not sustained tilt.
+    float rollDeadZone = yawModeActive ? YAW_DEAD_ZONE : TILT_DEAD_ZONE;
+    float rollSlewRate = yawModeActive ? YAW_SLEW_RATE : SLEW_RATE;
 
-    // Slew rate limiter — ramp all axes toward target at max SLEW_RATE units/frame.
-    auto slew = [](float target, float current) {
+    float targetRoll  = (float)mapAxis(-_filteredRoll, MAX_TILT_DEG,  rollDeadZone,    TILT_EXPO);
+    float targetPitch = (float)mapAxis(_filteredPitch,  MAX_PITCH_DEG, PITCH_DEAD_ZONE, PITCH_EXPO);
+
+    // Slew rate limiter — ramp roll/pitch toward target at max units/frame.
+    auto slew = [](float target, float current, float rate) {
         float d = target - current;
-        if (d >  SLEW_RATE) d =  SLEW_RATE;
-        if (d < -SLEW_RATE) d = -SLEW_RATE;
+        if (d >  rate) d =  rate;
+        if (d < -rate) d = -rate;
         return current + d;
     };
-    _currentRoll  = slew(targetRoll,  _currentRoll);
-    _currentPitch = slew(targetPitch, _currentPitch);
-    _currentYaw   = slew(targetYaw,   _currentYaw);
+    _currentRoll  = slew(targetRoll,  _currentRoll,  rollSlewRate);
+    _currentPitch = slew(targetPitch, _currentPitch, SLEW_RATE);
 
-    out.roll  = (uint8_t)_currentRoll;
+    // While yaw mode is toggled on, left/right tilt drives yaw instead of
+    // roll (roll itself is suppressed to neutral) — replaces the gyro-rate-
+    // based yaw, which was hard to control reliably.
+    out.roll  = yawModeActive ? (uint8_t)0x80         : (uint8_t)_currentRoll;
+    out.yaw   = yawModeActive ? (uint8_t)_currentRoll : (uint8_t)0x80;
     out.pitch = (uint8_t)_currentPitch;
-    out.yaw   = (uint8_t)_currentYaw;
     out.throttle = (uint8_t)_throttle;
     out.cmd      = DroneCmd::None;
     out.active   = true;

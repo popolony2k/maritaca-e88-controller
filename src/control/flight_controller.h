@@ -55,10 +55,14 @@ struct FlightDeps {
  *   - Double-click in Idle  → begin calibration (requires WiFi).
  *   - Double-click in Flying → begin landing.
  *   - Triple-click (any state) → emergency stop.
- *   - Single-click in Flying → toggle yaw enable/disable.
+ *   - Single-click in Flying → toggle yaw: BluetoothControl toggles whether
+ *     the right stick's yaw reaches the drone; AccelControl toggles yaw mode
+ *     (left/right tilt drives yaw instead of roll while on).
  *
- * In AccelControl mode, a hold gesture adjusts throttle via AccelController.
- * In BluetoothControl mode, hold detection is disabled (ZL/ZR handle throttle).
+ * In AccelControl mode, holding the button (without first toggling yaw mode)
+ * adjusts throttle via AccelController (press-and-hold = up, click-then-hold
+ * = down). In BluetoothControl mode, hold detection is disabled (ZL/ZR handle
+ * throttle; the right stick drives yaw directly via GamepadController).
  *
  * Safety: if WiFi is lost during any active flight state, an emergency stop
  * is triggered immediately and the machine returns to Idle.
@@ -141,12 +145,13 @@ private:
     bool          _stateFirstFrame = true;
 
     // ---- Button gesture state ------------------------------------------
-    uint8_t  _clickCount    = 0;
-    uint32_t _lastReleaseMs = 0;
-    bool     _buttonDown    = false;
-    bool     _btnIsHold     = false;
-    bool     _btnHoldIsDown = false;
-    bool     _yawEnabled    = false;
+    uint8_t  _clickCount     = 0;
+    uint32_t _lastReleaseMs  = 0;
+    bool     _buttonDown     = false;
+    bool     _btnIsHold      = false;
+    bool     _btnHoldIsDown  = false;
+    bool     _yawEnabled     = false;
+    bool     _yawModeActive  = false; ///< AccelControl: yaw mode toggled on — tilt L/R drives yaw instead of roll.
 
     GamepadAxes       _lastGamepadAxes;
     AccelController   _accel;

@@ -27,9 +27,9 @@ Replace the drone's factory RF remote with a custom controller supporting two mo
 
 ### Mode 1 — Accel Tilt (AtomS3 as a motion controller)
 
-- **Tilt the AtomS3 left/right** → roll (strafe)
+- **Tilt the AtomS3 left/right** → roll (strafe) — or yaw (spin), while yaw mode is on
 - **Tilt the AtomS3 forward/back** → pitch (forward/backward flight)
-- **Rotate the board** (gyro Z-rate) → yaw (spin) — off by default; single-click while flying to toggle
+- **Single-click while flying** → toggle yaw mode on/off; while on, left/right tilt drives yaw instead of roll
 - **Press and hold the screen button** → throttle up (climb)
 - **Click once, then press and hold** → throttle down (descend)
 - **Release the hold** → throttle snaps back to hover — both drones run altitude-hold firmware, so the drone maintains the new altitude
@@ -210,8 +210,8 @@ src/
 │   ├── operation_mode.h        # OperationMode enum: AccelControl / BluetoothControl
 │   ├── flight_controller.h/.cpp# State machine (Idle→Calib→Arming→Flying→Landing)
 │   │                           #   + button handling; dispatches to correct controller
-│   ├── accel_controller.h/.cpp # Tilt→control mapping: roll/yaw via mapAxis(),
-│   │                           #   rate-based throttle via pitch axis, EMA filter
+│   ├── accel_controller.h/.cpp # Tilt→control mapping: roll/pitch via mapAxis(),
+│   │                           #   yaw mode reroutes roll tilt, EMA filter
 │   └── gamepad_controller.h/.cpp # GamepadAxes→DroneState: dead zone, expo, slew rate
 │                               #   (per-drone via GamepadConfig), rate-based throttle
 │

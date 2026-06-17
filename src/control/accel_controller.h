@@ -23,18 +23,22 @@
  * @brief Tilt-to-flight control mapping for the AtomS3 accelerometer/gyroscope.
  *
  * Converts raw IMU data into Eachine-protocol axis values:
- *   - Left/right board tilt  → roll
+ *   - Left/right board tilt  → roll (or yaw, while yaw mode is toggled on)
  *   - Forward/backward tilt  → pitch
- *   - Gyroscope Z rate       → yaw
  *   - Throttle is rate-based: held via adjustThrottle(), not directly mapped.
  *
- * Each axis passes through a dead zone, an expo curve, and a slew-rate
- * limiter before being written to DroneState. An exponential moving average
- * (EMA) low-pass filter smooths IMU noise.
+ * Yaw is not gyro-rate based (that proved a hard gesture to control reliably).
+ * Instead, FlightController's single-click yaw-mode toggle passes
+ * yawModeActive=true to update(): while on, the same left/right tilt that
+ * normally drives roll is routed to yaw instead, and roll is suppressed to
+ * neutral.
+ *
+ * Roll/pitch pass through a dead zone, an expo curve, and a slew-rate limiter
+ * before being written to DroneState. An exponential moving average (EMA)
+ * low-pass filter smooths IMU noise.
  *
  * Sign conventions:
  *   - Roll  is negated: drone nose faces away from the user, so left/right is mirrored.
- *   - Yaw   is negated: same reason.
  *   - Pitch is not negated: tilt forward = fly forward.
  */
 class AccelController {
@@ -46,10 +50,12 @@ public:
      * @brief Compute axis values from IMU data and write to @p out.
      *
      * Does nothing if disabled or if ImuData::valid is false.
-     * @param imu  Latest IMU sample from Accelerometer::data().
-     * @param out  DroneState to populate; out.active is set to true on success.
+     * @param imu            Latest IMU sample from Accelerometer::data().
+     * @param out            DroneState to populate; out.active is set to true on success.
+     * @param yawModeActive  True while yaw mode is toggled on — routes left/right
+     *                       tilt to yaw instead of roll.
      */
-    void update(const ImuData& imu, DroneState& out);
+    void update(const ImuData& imu, DroneState& out, bool yawModeActive = false);
 
     /** @brief Enable or disable output. Disabled state leaves @p out unchanged. */
     void setEnabled(bool en) { _enabled = en; }
@@ -84,22 +90,15 @@ private:
 
     bool  _enabled       = false;
     float _filteredRoll  = 0.0f;
-    float _filteredYaw   = 0.0f;
     float _filteredPitch = 0.0f;
     float _throttle      = 128.0f; ///< Persistent throttle level [0, 254].
-    float _currentRoll   = 128.0f; ///< Slew-limited roll output.
+    float _currentRoll   = 128.0f; ///< Slew-limited roll output — reused as yaw during yaw-hold.
     float _currentPitch  = 128.0f; ///< Slew-limited pitch output.
-    float _currentYaw    = 128.0f; ///< Slew-limited yaw output.
 
     // ---- Roll / Pitch tuning -------------------------------------------
     static constexpr float MAX_TILT_DEG    = 20.0f; ///< Tilt angle for full deflection (deg).
     static constexpr float TILT_DEAD_ZONE  = 10.0f; ///< Dead zone half-width (deg).
     static constexpr float TILT_EXPO       =  0.5f; ///< Expo for roll/pitch.
-
-    // ---- Yaw tuning ----------------------------------------------------
-    static constexpr float MAX_YAW_RATE    = 120.0f; ///< Gyro Z rate for full yaw (deg/s).
-    static constexpr float YAW_DEAD_ZONE   =  20.0f; ///< Dead zone half-width (deg/s).
-    static constexpr float YAW_EXPO        =   0.5f; ///< Expo for yaw.
 
     // ---- Pitch (forward/backward) tuning --------------------------------
     static constexpr float MAX_PITCH_DEG   = 20.0f;
@@ -108,6 +107,8 @@ private:
 
     // ---- Slew rate limiter ---------------------------------------------
     static constexpr float SLEW_RATE       =  3.0f; ///< Max output change per frame at 25 Hz.
+    static constexpr float YAW_SLEW_RATE   =  5.0f; ///< Faster ramp for yaw mode — snappier response.
+    static constexpr float YAW_DEAD_ZONE   =  7.0f; ///< Smaller dead zone for yaw mode (deg) — responds sooner.
 
     // ---- Throttle ------------------------------------------------------
     static constexpr float THROTTLE_INIT   = 128.0f; ///< Starting throttle when Flying begins.
