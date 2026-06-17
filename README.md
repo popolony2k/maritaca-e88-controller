@@ -212,8 +212,8 @@ src/
 │   │                           #   + button handling; dispatches to correct controller
 │   ├── accel_controller.h/.cpp # Tilt→control mapping: roll/yaw via mapAxis(),
 │   │                           #   rate-based throttle via pitch axis, EMA filter
-│   └── gamepad_controller.h/.cpp # GamepadAxes→DroneState: dead zone, expo, slew rate,
-│                               #   rate-based throttle from ZL/ZR
+│   └── gamepad_controller.h/.cpp # GamepadAxes→DroneState: dead zone, expo, slew rate
+│                               #   (per-drone via GamepadConfig), rate-based throttle
 │
 └── ui/
     ├── display.h               # Display class declaration

@@ -34,7 +34,7 @@ FlightController::FlightController(FlightDeps deps) : _deps(deps) {}
 
 void FlightController::begin() {
     _accel.begin();
-    _gamepad.begin();
+    _gamepad.begin(_deps.drone.gamepadConfig());
     _state           = FlightState::Idle;
     _stateEnteredMs  = millis();
     _stateFirstFrame = true;
@@ -68,7 +68,7 @@ void FlightController::enterState(FlightState s, bool sendModeCmd) {
     _accel.setEnabled(s == FlightState::Flying);
     if (s == FlightState::Flying) {
         _accel.begin();
-        _gamepad.begin();
+        _gamepad.begin(_deps.drone.gamepadConfig());
         // Drones without arm sequence (e.g. FLOW-WIFI) use TakeOff toggle to arm and lift off.
         if (!_deps.drone.supportsArmSequence()) {
             _oneShotCmd   = DroneCmd::TakeOff;

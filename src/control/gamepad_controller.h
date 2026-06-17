@@ -17,7 +17,7 @@
 #pragma once
 #include <Arduino.h>
 #include "../bt/gamepad_axes.h"
-#include "../comm/drone_protocol.h"
+#include "../comm/drone_protocol_base.h"
 
 /**
  * @brief Maps normalised BLE gamepad axes to Eachine protocol control values.
@@ -39,8 +39,8 @@
  */
 class GamepadController {
 public:
-    /** @brief Reset throttle and slew state to neutral. */
-    void begin();
+    /** @brief Reset throttle and slew state to neutral; apply per-drone tuning. */
+    void begin(const GamepadConfig& cfg = {});
 
     /**
      * @brief Compute axis values from gamepad input and write to @p out.
@@ -67,9 +67,10 @@ private:
     float _currentPitch = 128.0f; ///< Slew-limited pitch output.
     float _currentYaw   = 128.0f; ///< Slew-limited yaw output.
 
-    static constexpr float DEAD_ZONE         = 0.12f; ///< 12% dead zone around stick centre.
-    static constexpr float EXPO              =  0.4f; ///< Expo curve blend factor.
-    static constexpr float SLEW_RATE         =  8.0f; ///< Max output change per frame at 25 Hz.
-    static constexpr float THROTTLE_RATE_MAX =  0.6f; ///< Throttle units/frame at full trigger.
+    float _deadZone = 0.12f; ///< Active dead zone — set per-drone via begin().
+    float _expo     = 0.40f; ///< Active expo — set per-drone via begin().
+    float _slewRate = 8.0f;  ///< Active slew rate — set per-drone via begin().
+
+    static constexpr float THROTTLE_RATE_MAX = 0.6f;   ///< Throttle units/frame at full trigger.
     static constexpr float THROTTLE_INIT     = 128.0f; ///< Starting throttle when Flying begins.
 };

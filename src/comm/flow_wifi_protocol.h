@@ -52,6 +52,11 @@ public:
     const DroneState& state()        const override { return _state; }
     bool appModeOk()                 const override { return true; }
     bool supportsArmSequence()       const override { return false; }
+    GamepadConfig gamepadConfig()    const override {
+        // Optical-flow flight controller handles its own smoothing — no slew lag needed.
+        // slewRate=128 reaches any target in ≤1 frame (40 ms) vs 630 ms with the default 8.
+        return GamepadConfig(0.12f, 0.40f, 128.0f);
+    }
 
 private:
     void sendPacket();

@@ -63,6 +63,20 @@ struct DroneState {
 };
 
 /**
+ * @brief Per-drone GamepadController tuning parameters.
+ *
+ * Returned by DroneProtocolBase::gamepadConfig() so each drone can specify
+ * its own feel without touching shared controller logic.
+ */
+struct GamepadConfig {
+    float deadZone; ///< Dead zone around stick centre (fraction of full scale).
+    float expo;     ///< Expo curve blend: 0 = linear, 1 = quadratic.
+    float slewRate; ///< Max output change per 25 Hz frame (units). 128 = ~instant.
+    GamepadConfig(float dz = 0.12f, float e = 0.40f, float sr = 8.0f)
+        : deadZone(dz), expo(e), slewRate(sr) {}
+};
+
+/**
  * @brief Abstract interface for all drone UDP protocol drivers.
  *
  * Concrete implementations: DroneProtocol (WIFI_8K_ black drone) and
@@ -107,4 +121,7 @@ public:
      * a TakeOff command on entry.
      */
     virtual bool supportsArmSequence() const { return true; }
+
+    /** @brief Gamepad tuning parameters for this drone. Override to customise feel. */
+    virtual GamepadConfig gamepadConfig() const { return {}; }
 };

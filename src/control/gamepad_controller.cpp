@@ -31,7 +31,11 @@ uint8_t GamepadController::mapAxis(float value, float deadZone, float expo) {
     return (uint8_t)((0.5f + sign * scaled * 0.5f) * 254.0f);
 }
 
-void GamepadController::begin() {
+void GamepadController::begin(const GamepadConfig& cfg) {
+    _deadZone = cfg.deadZone;
+    _expo     = cfg.expo;
+    _slewRate = cfg.slewRate;
+
     _throttle     = THROTTLE_INIT;
     _currentRoll  = 128.0f;
     _currentPitch = 128.0f;
@@ -54,14 +58,14 @@ void GamepadController::update(const GamepadAxes& axes, DroneState& out) {
         _throttle = THROTTLE_INIT;
     }
 
-    float targetRoll  = (float)mapAxis(axes.roll,  DEAD_ZONE, EXPO);
-    float targetPitch = (float)mapAxis(axes.pitch, DEAD_ZONE, EXPO);
-    float targetYaw   = (float)mapAxis(axes.yaw,   DEAD_ZONE, EXPO);
+    float targetRoll  = (float)mapAxis(axes.roll,  _deadZone, _expo);
+    float targetPitch = (float)mapAxis(axes.pitch, _deadZone, _expo);
+    float targetYaw   = (float)mapAxis(axes.yaw,   _deadZone, _expo);
 
-    auto slew = [](float target, float current) {
+    auto slew = [this](float target, float current) {
         float d = target - current;
-        if (d >  SLEW_RATE) d =  SLEW_RATE;
-        if (d < -SLEW_RATE) d = -SLEW_RATE;
+        if (d >  _slewRate) d =  _slewRate;
+        if (d < -_slewRate) d = -_slewRate;
         return current + d;
     };
     _currentRoll  = slew(targetRoll,  _currentRoll);

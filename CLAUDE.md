@@ -391,13 +391,38 @@ First 200 raw reports are dumped to Serial (`[BLE] report[N] len=N: XX XX …`) 
 
 ### GamepadController tuning parameters
 
-All in `src/control/gamepad_controller.h`:
+Roll/pitch/yaw tuning is **per-drone** via the `GamepadConfig` struct returned by
+`DroneProtocolBase::gamepadConfig()`. Each drone overrides the values it needs;
+`THROTTLE_RATE_MAX` and `THROTTLE_INIT` are shared (throttle handling is identical
+across drones or overridden in `FlightController` for Dr.One anyway).
+
+**Maritaca Force 1 (black drone — default `GamepadConfig`):**
 
 ```cpp
-static constexpr float DEAD_ZONE         = 0.12f;  // 12% of full scale
-static constexpr float EXPO              = 0.40f;  // expo curve blending
-static constexpr float SLEW_RATE         = 8.0f;   // units/frame max change for roll/pitch/yaw
-static constexpr float THROTTLE_RATE_MAX = 0.6f;   // units/frame throttle change (tuned for weak motors)
+// src/comm/drone_protocol_base.h — GamepadConfig default constructor
+float deadZone = 0.12f;  // 12% of full scale
+float expo     = 0.40f;  // expo curve blending
+float slewRate = 8.0f;   // units/frame (~630 ms full throw)
+```
+
+**Dr.One (grey drone — `FlowWifiProtocol::gamepadConfig()` override):**
+
+```cpp
+// src/comm/flow_wifi_protocol.h
+float deadZone = 0.12f;   // same dead zone
+float expo     = 0.40f;   // same expo
+float slewRate = 128.0f;  // ~instant (≤40 ms full throw)
+```
+
+`slewRate=8` causes up to 630 ms of lag after releasing the stick on Dr.One (its
+optical-flow flight controller executes the residual command faithfully, unlike the
+black drone). `slewRate=128` reaches any target in ≤1 frame (40 ms) — the drone's
+internal PID provides the smoothing instead.
+
+**Shared constants in `src/control/gamepad_controller.h`:**
+
+```cpp
+static constexpr float THROTTLE_RATE_MAX = 0.6f;   // units/frame throttle change
 static constexpr float THROTTLE_INIT     = 128.0f; // throttle value when Flying begins
 ```
 
