@@ -113,7 +113,7 @@ private:
      * Only called in BluetoothControl mode. Detects rising edges on
      * GamepadAxes::buttons, then maps each button to a drone command:
      *   A        → arm + takeoff (Idle + WiFi only)
-     *   B        → land (Flying only, requires double-click)
+     *   B        → land (Flying only)
      *   X        → emergency stop (any state)
      *   Y        → flip (Flying only)
      *   D-pad UP → headless mode toggle (Flying, stick near centre)
@@ -162,8 +162,6 @@ private:
     bool     _headless       = false;
     uint8_t  _oneShotCmd     = 0;     ///< DroneCmd flag to inject for one shot.
     uint32_t _oneShotUntil   = 0;     ///< millis() deadline for _oneShotCmd.
-    bool     _bClickPending  = false; ///< First B click seen, awaiting second within DOUBLE_CLICK_MS.
-    uint32_t _lastBPressMs   = 0;     ///< millis() of the first B click.
 
     static constexpr uint32_t DOUBLE_CLICK_MS     = 1000; ///< Max gap between clicks (ms).
     static constexpr uint32_t HOLD_THRESHOLD_MS   =  500; ///< Press duration to trigger hold.
