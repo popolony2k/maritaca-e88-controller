@@ -29,6 +29,9 @@
 /// LovyanGFX rotation constants (0=0°, 1=90°CW, 2=180°, 3=270°CW).
 static constexpr uint8_t ROTATION_270 = 3;
 
+static constexpr uint8_t DEFAULT_BRIGHTNESS = 128; ///< Initial backlight level on begin().
+static constexpr uint8_t DEFAULT_TEXT_SIZE  =   1;  ///< Normal (1x) text scale.
+
 /**
  * @defgroup battery_adc Battery voltage sense (Atomic Battery Base)
  *
@@ -112,9 +115,9 @@ const BoardHal kBoard {
 
 const DisplayHal kDisplay {
     .begin        = [] {
-        M5.Display.setBrightness(128);
+        M5.Display.setBrightness(DEFAULT_BRIGHTNESS);
         M5.Display.setRotation(ROTATION_270);
-        M5.Display.setTextSize(1);
+        M5.Display.setTextSize(DEFAULT_TEXT_SIZE);
         M5.Display.setTextDatum(TL_DATUM);
     },
     .setBrightness = [](uint8_t v)                                   { M5.Display.setBrightness(v); },

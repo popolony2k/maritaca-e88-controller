@@ -70,7 +70,11 @@ static bool     _prevShowBtScreen = false;
 static bool     _screenOff        = false;
 static uint16_t _prevGpBtns       = 0;     // rising-edge tracking for main.cpp button events
 
-static constexpr uint32_t MODE_SELECT_MS = 3000; ///< Boot menu auto-select timeout (ms).
+static constexpr uint32_t MODE_SELECT_MS     = 3000; ///< Boot menu auto-select timeout (ms).
+static constexpr int      MODE_SELECT_MAX_S  = (int)(MODE_SELECT_MS / 1000); ///< Countdown start value (s).
+static constexpr uint32_t BT_STATUS_SCREEN_MS = 1500; ///< Keep BT status screen up this long after connect, before switching to the HUD.
+static constexpr uint8_t  AXIS_DISPLAY_MIN    =    1;  ///< Idle+BT preview clamp floor — keeps the bar visibly non-empty.
+static constexpr float    AXIS_DISPLAY_HALF_RANGE = 127.0f; ///< Half-range offset from neutral when mapping [-1,1] gamepad axes to display bytes.
 
 /**
  * @brief Block in the boot mode-selection menu until the countdown expires.
@@ -95,11 +99,11 @@ static void runModeSelection() {
 
         uint32_t elapsed  = millis() - selectStart;
         int      secsLeft = (int)((MODE_SELECT_MS - elapsed) / 1000) + 1;
-        if (secsLeft > 3) secsLeft = 3;
+        if (secsLeft > MODE_SELECT_MAX_S) secsLeft = MODE_SELECT_MAX_S;
         if (secsLeft < 0) secsLeft = 0;
 
         uint32_t now = millis();
-        if (now - lastDrawMs >= 100) {
+        if (now - lastDrawMs >= DISPLAY_INTERVAL_MS) {
             lastDrawMs = now;
             display.drawModeSelect(sel, secsLeft);
         }
@@ -183,7 +187,7 @@ void loop() {
 
     bool showBtScreen = (modeManager.current() == OperationMode::BluetoothControl)
                         && (flight->state() == FlightState::Idle)
-                        && (!gpConnected || !wifi.isConnected() || (millis() - _btConnectedMs < 1500));
+                        && (!gpConnected || !wifi.isConnected() || (millis() - _btConnectedMs < BT_STATUS_SCREEN_MS));
 
     // D-pad LEFT: toggle screen on/off — only available on the flight HUD (not BT status screen)
     uint16_t gpBtns   = gpAxes.buttons;
@@ -223,13 +227,14 @@ void loop() {
                 && flight->state() == FlightState::Idle
                 && gpAxes.connected) {
                 auto tobyte = [](float v) -> uint8_t {
-                    int i = 0x80 + (int)(v * 127.0f);
-                    return (uint8_t)(i < 1 ? 1 : i > 254 ? 254 : i);
+                    int i = DroneAxis::NEUTRAL + (int)(v * AXIS_DISPLAY_HALF_RANGE);
+                    return (uint8_t)(i < AXIS_DISPLAY_MIN ? AXIS_DISPLAY_MIN :
+                                      i > DroneAxis::MAX   ? DroneAxis::MAX  : i);
                 };
                 displayState.roll     = tobyte( gpAxes.roll);
                 displayState.pitch    = tobyte(-gpAxes.pitch);
                 displayState.yaw      = tobyte( gpAxes.yaw);
-                displayState.throttle = 0x80;  // no accumulator in Idle; keep neutral
+                displayState.throttle = DroneAxis::NEUTRAL;  // no accumulator in Idle; keep neutral
                 displayState.active   = true;
             }
             display.update(wifi.isConnected(), flight->state(),
