@@ -20,7 +20,7 @@
 
 // Maps normalized [-1,1] with dead zone + expo → [0, 254], neutral = 128.
 uint8_t GamepadController::mapAxis(float value, float deadZone, float expo) {
-    if (fabsf(value) < deadZone) return 0x80;
+    if (fabsf(value) < deadZone) return DroneAxis::NEUTRAL;
 
     float sign   = value > 0.0f ? 1.0f : -1.0f;
     float scaled = (fabsf(value) - deadZone) / (1.0f - deadZone);
@@ -28,7 +28,7 @@ uint8_t GamepadController::mapAxis(float value, float deadZone, float expo) {
 
     scaled = scaled * ((1.0f - expo) + expo * scaled);
 
-    return (uint8_t)((0.5f + sign * scaled * 0.5f) * 254.0f);
+    return (uint8_t)((0.5f + sign * scaled * 0.5f) * (float)DroneAxis::MAX);
 }
 
 void GamepadController::begin(const GamepadConfig& cfg) {
@@ -37,9 +37,9 @@ void GamepadController::begin(const GamepadConfig& cfg) {
     _slewRate = cfg.slewRate;
 
     _throttle     = THROTTLE_INIT;
-    _currentRoll  = 128.0f;
-    _currentPitch = 128.0f;
-    _currentYaw   = 128.0f;
+    _currentRoll  = DroneAxis::NEUTRAL;
+    _currentPitch = DroneAxis::NEUTRAL;
+    _currentYaw   = DroneAxis::NEUTRAL;
 }
 
 void GamepadController::update(const GamepadAxes& axes, DroneState& out) {
@@ -50,10 +50,10 @@ void GamepadController::update(const GamepadAxes& axes, DroneState& out) {
     // a climb/descend rate, not an accumulated lift level — snap back to
     // hover the instant the stick/triggers are centered.
     float rate = axes.throttleUp - axes.throttleDown;
-    if (fabsf(rate) > 0.05f) {
+    if (fabsf(rate) > THROTTLE_RATE_HYSTERESIS) {
         _throttle += rate * THROTTLE_RATE_MAX;
-        if (_throttle <   0.0f) _throttle =   0.0f;
-        if (_throttle > 254.0f) _throttle = 254.0f;
+        if (_throttle < (float)DroneAxis::MIN) _throttle = (float)DroneAxis::MIN;
+        if (_throttle > (float)DroneAxis::MAX) _throttle = (float)DroneAxis::MAX;
     } else {
         _throttle = THROTTLE_INIT;
     }

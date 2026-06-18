@@ -62,15 +62,16 @@ private:
      */
     static uint8_t mapAxis(float value, float deadZone, float expo);
 
-    float _throttle     = 128.0f; ///< Persistent throttle level [0, 254].
-    float _currentRoll  = 128.0f; ///< Slew-limited roll output.
-    float _currentPitch = 128.0f; ///< Slew-limited pitch output.
-    float _currentYaw   = 128.0f; ///< Slew-limited yaw output.
+    float _throttle     = DroneAxis::NEUTRAL; ///< Persistent throttle level [0, 254].
+    float _currentRoll  = DroneAxis::NEUTRAL; ///< Slew-limited roll output.
+    float _currentPitch = DroneAxis::NEUTRAL; ///< Slew-limited pitch output.
+    float _currentYaw   = DroneAxis::NEUTRAL; ///< Slew-limited yaw output.
 
     float _deadZone = 0.12f; ///< Active dead zone — set per-drone via begin().
     float _expo     = 0.40f; ///< Active expo — set per-drone via begin().
     float _slewRate = 8.0f;  ///< Active slew rate — set per-drone via begin().
 
-    static constexpr float THROTTLE_RATE_MAX = 0.6f;   ///< Throttle units/frame at full trigger.
-    static constexpr float THROTTLE_INIT     = 128.0f; ///< Starting throttle when Flying begins.
+    static constexpr float THROTTLE_RATE_MAX        = 0.6f;   ///< Throttle units/frame at full trigger.
+    static constexpr float THROTTLE_RATE_HYSTERESIS = 0.05f;  ///< Dead band on trigger rate to avoid jitter near center.
+    static constexpr float THROTTLE_INIT            = DroneAxis::NEUTRAL; ///< Starting throttle when Flying begins.
 };

@@ -174,4 +174,11 @@ private:
     static constexpr uint32_t LANDING_DURATION_MS = 2000; ///< Landing command duration.
     static constexpr float    THROTTLE_HOLD_RATE_UP   =  0.3f;  ///< Climb rate during hold (units/frame).
     static constexpr float    THROTTLE_HOLD_RATE_DOWN =  0.10f; ///< Descend rate during hold (units/frame) — gentler for finer control.
+
+    static constexpr uint32_t AUTO_TAKEOFF_HOLD_MS    = 1000; ///< FLOW-WIFI: hold TakeOff one-shot cmd this long on entering Flying.
+    static constexpr uint32_t LANDING_TAKEOFF_HOLD_MS = 1000; ///< FLOW-WIFI: hold TakeOff (land toggle) this long in Landing state.
+    static constexpr uint32_t EMERGENCY_EXIT_MS       = 1000; ///< FLOW-WIFI: hold EmergStop this long before returning to Idle.
+    static constexpr uint32_t ONE_SHOT_CMD_HOLD_MS    =  200; ///< Hold duration for momentary gamepad commands (Flip/Lock/Unlock/CaliGyro).
+    static constexpr uint8_t  THROTTLE_RANGE_HALF     = 0x7F; ///< Half-range offset from neutral for direct throttle mapping.
+    static constexpr float    STICK_CLEAR_THRESHOLD   = 0.15f; ///< Stick must be within this of centre to allow D-pad gestures.
 };

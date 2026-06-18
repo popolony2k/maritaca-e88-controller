@@ -73,7 +73,7 @@ void FlightController::enterState(FlightState s, bool sendModeCmd) {
         // Drones without arm sequence (e.g. FLOW-WIFI) use TakeOff toggle to arm and lift off.
         if (!_deps.drone.supportsArmSequence()) {
             _oneShotCmd   = DroneCmd::TakeOff;
-            _oneShotUntil = millis() + 1000;
+            _oneShotUntil = millis() + AUTO_TAKEOFF_HOLD_MS;
         }
     }
 
@@ -174,7 +174,8 @@ void FlightController::runState(const ImuData& imu, bool wifiOk) {
             break;
 
         case FlightState::Calibrating:
-            _deps.drone.setControl(0x80, 0x80, 0x00, 0x80, DroneCmd::CaliGyro);
+            _deps.drone.setControl(DroneAxis::NEUTRAL, DroneAxis::NEUTRAL, DroneAxis::MIN,
+                                   DroneAxis::NEUTRAL, DroneCmd::CaliGyro);
             if (elapsed >= CALI_DURATION_MS) {
                 enterState(FlightState::Arming);
             }
@@ -182,9 +183,11 @@ void FlightController::runState(const ImuData& imu, bool wifiOk) {
 
         case FlightState::Arming:
             if (elapsed < UNLOCK_DURATION_MS) {
-                _deps.drone.setControl(0x80, 0x80, 0x80, 0x80, DroneCmd::Unlock);
+                _deps.drone.setControl(DroneAxis::NEUTRAL, DroneAxis::NEUTRAL, DroneAxis::NEUTRAL,
+                                       DroneAxis::NEUTRAL, DroneCmd::Unlock);
             } else if (elapsed < UNLOCK_DURATION_MS + TAKEOFF_DURATION_MS) {
-                _deps.drone.setControl(0x80, 0x80, 0x80, 0x80, DroneCmd::TakeOff);
+                _deps.drone.setControl(DroneAxis::NEUTRAL, DroneAxis::NEUTRAL, DroneAxis::NEUTRAL,
+                                       DroneAxis::NEUTRAL, DroneCmd::TakeOff);
             } else {
                 enterState(FlightState::Flying);
             }
@@ -192,7 +195,8 @@ void FlightController::runState(const ImuData& imu, bool wifiOk) {
 
         case FlightState::Flying: {
             if (elapsed < ACCEL_LOCKOUT_MS) {
-                _deps.drone.setControl(0x80, 0x80, 0x80, 0x80, DroneCmd::None);
+                _deps.drone.setControl(DroneAxis::NEUTRAL, DroneAxis::NEUTRAL, DroneAxis::NEUTRAL,
+                                       DroneAxis::NEUTRAL, DroneCmd::None);
                 break;
             }
             // BT gamepad lost during flight → emergency stop.
@@ -210,7 +214,7 @@ void FlightController::runState(const ImuData& imu, bool wifiOk) {
                     float rate = _lastGamepadAxes.throttleUp - _lastGamepadAxes.throttleDown;
                     if (rate >  1.0f) rate =  1.0f;
                     if (rate < -1.0f) rate = -1.0f;
-                    cs.throttle = (uint8_t)(0x80 + (int)(rate * 0x7F));
+                    cs.throttle = (uint8_t)(DroneAxis::NEUTRAL + (int)(rate * THROTTLE_RANGE_HALF));
                 }
             } else {
                 if (_btnIsHold) {
@@ -223,7 +227,7 @@ void FlightController::runState(const ImuData& imu, bool wifiOk) {
                 // climb/descend rate relative to hover (0x80), not an accumulated
                 // lift level — snap back to hover as soon as the hold gesture ends.
                 if (!_btnIsHold) {
-                    cs.throttle = 0x80;
+                    cs.throttle = DroneAxis::NEUTRAL;
                     _accel.resetThrottle();
                 }
             }
@@ -237,7 +241,7 @@ void FlightController::runState(const ImuData& imu, bool wifiOk) {
                     _oneShotUntil = 0;
                 }
                 _deps.drone.setControl(cs.roll, cs.pitch, cs.throttle,
-                                      _yawEnabled ? cs.yaw : (uint8_t)0x80,
+                                      _yawEnabled ? cs.yaw : DroneAxis::NEUTRAL,
                                       cmd);
             } else {
                 _deps.drone.setIdle();
@@ -247,11 +251,12 @@ void FlightController::runState(const ImuData& imu, bool wifiOk) {
 
         case FlightState::Landing:
             if (_deps.drone.supportsArmSequence()) {
-                _deps.drone.setControl(0x80, 0x80, 0x80, 0x80, DroneCmd::Land);
+                _deps.drone.setControl(DroneAxis::NEUTRAL, DroneAxis::NEUTRAL, DroneAxis::NEUTRAL,
+                                       DroneAxis::NEUTRAL, DroneCmd::Land);
             } else {
-                // FLOW-WIFI: TakeOff toggle acts as land; send for 1 s then idle.
-                _deps.drone.setControl(0x80, 0x80, 0x80, 0x80,
-                                       elapsed < 1000 ? DroneCmd::TakeOff : DroneCmd::None);
+                // FLOW-WIFI: TakeOff toggle acts as land; send for a while then idle.
+                _deps.drone.setControl(DroneAxis::NEUTRAL, DroneAxis::NEUTRAL, DroneAxis::NEUTRAL, DroneAxis::NEUTRAL,
+                                       elapsed < LANDING_TAKEOFF_HOLD_MS ? DroneCmd::TakeOff : DroneCmd::None);
             }
             if (elapsed >= LANDING_DURATION_MS) {
                 enterState(FlightState::Idle);
@@ -261,11 +266,13 @@ void FlightController::runState(const ImuData& imu, bool wifiOk) {
         case FlightState::Emergency:
             if (_deps.drone.supportsArmSequence()) {
                 // Black drone: E58 EmergStop command cuts motors immediately.
-                _deps.drone.setControl(0x80, 0x80, 0x80, 0x80, DroneCmd::EmergStop);
+                _deps.drone.setControl(DroneAxis::NEUTRAL, DroneAxis::NEUTRAL, DroneAxis::NEUTRAL,
+                                       DroneAxis::NEUTRAL, DroneCmd::EmergStop);
                 enterState(FlightState::Idle);
             } else {
-                _deps.drone.setControl(0x80, 0x80, 0x80, 0x80, DroneCmdEx::EmergStop);
-                if (elapsed >= 1000) enterState(FlightState::Idle);
+                _deps.drone.setControl(DroneAxis::NEUTRAL, DroneAxis::NEUTRAL, DroneAxis::NEUTRAL,
+                                       DroneAxis::NEUTRAL, DroneCmdEx::EmergStop);
+                if (elapsed >= EMERGENCY_EXIT_MS) enterState(FlightState::Idle);
             }
             break;
     }
@@ -325,26 +332,26 @@ void FlightController::handleGamepadButtons(bool wifiOk) {
     // Y — flip
     if (pressed & GamepadBtn::Y) {
         _oneShotCmd   = DroneCmd::Flip;
-        _oneShotUntil = millis() + 200;
+        _oneShotUntil = millis() + ONE_SHOT_CMD_HOLD_MS;
         Serial.println("[Flight] Flip (Y)");
     }
     // LT — lock motors
     if (pressed & GamepadBtn::LT) {
         _oneShotCmd   = DroneCmd::Lock;
-        _oneShotUntil = millis() + 200;
+        _oneShotUntil = millis() + ONE_SHOT_CMD_HOLD_MS;
         Serial.println("[Flight] Lock (LT)");
     }
     // R1 — unlock motors
     if (pressed & GamepadBtn::R1) {
         _oneShotCmd   = DroneCmd::Unlock;
-        _oneShotUntil = millis() + 200;
+        _oneShotUntil = millis() + ONE_SHOT_CMD_HOLD_MS;
         Serial.println("[Flight] Unlock (R1)");
     }
 
     // D-pad buttons are in the left stick zone — guard against accidental
     // triggers while the stick is deflected (thumb can't be on both).
-    bool stickClear = (fabsf(_lastGamepadAxes.roll)  < 0.15f &&
-                       fabsf(_lastGamepadAxes.pitch) < 0.15f);
+    bool stickClear = (fabsf(_lastGamepadAxes.roll)  < STICK_CLEAR_THRESHOLD &&
+                       fabsf(_lastGamepadAxes.pitch) < STICK_CLEAR_THRESHOLD);
     if (!stickClear) return;
 
     if (pressed & GamepadBtn::DpadUp) {
@@ -353,7 +360,7 @@ void FlightController::handleGamepadButtons(bool wifiOk) {
     }
     if (pressed & GamepadBtn::DpadDown) {
         _oneShotCmd   = DroneCmd::CaliGyro;
-        _oneShotUntil = millis() + 200;
+        _oneShotUntil = millis() + ONE_SHOT_CMD_HOLD_MS;
         Serial.println("[Flight] CaliGyro (DpadDown)");
     }
     // DpadLeft / DpadRight — spare, no action

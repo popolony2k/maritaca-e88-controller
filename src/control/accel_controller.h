@@ -91,9 +91,9 @@ private:
     bool  _enabled       = false;
     float _filteredRoll  = 0.0f;
     float _filteredPitch = 0.0f;
-    float _throttle      = 128.0f; ///< Persistent throttle level [0, 254].
-    float _currentRoll   = 128.0f; ///< Slew-limited roll output — reused as yaw during yaw-hold.
-    float _currentPitch  = 128.0f; ///< Slew-limited pitch output.
+    float _throttle      = DroneAxis::NEUTRAL; ///< Persistent throttle level [0, 254].
+    float _currentRoll   = DroneAxis::NEUTRAL; ///< Slew-limited roll output — reused as yaw during yaw-hold.
+    float _currentPitch  = DroneAxis::NEUTRAL; ///< Slew-limited pitch output.
 
     // ---- Roll / Pitch tuning -------------------------------------------
     static constexpr float MAX_TILT_DEG    = 20.0f; ///< Tilt angle for full deflection (deg).
@@ -111,7 +111,7 @@ private:
     static constexpr float YAW_DEAD_ZONE   =  7.0f; ///< Smaller dead zone for yaw mode (deg) — responds sooner.
 
     // ---- Throttle ------------------------------------------------------
-    static constexpr float THROTTLE_INIT   = 128.0f; ///< Starting throttle when Flying begins.
+    static constexpr float THROTTLE_INIT   = DroneAxis::NEUTRAL; ///< Starting throttle when Flying begins.
 
     // ---- Low-pass filter -----------------------------------------------
     static constexpr float ANGLE_ALPHA     =  0.25f; ///< EMA coefficient (higher = less smoothing).

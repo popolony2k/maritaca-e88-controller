@@ -22,7 +22,7 @@
 // Values inside ±deadZone → neutral (128).
 // expo: 0 = linear, 1 = quadratic (small inputs give much smaller outputs).
 uint8_t AccelController::mapAxis(float value, float maxRange, float deadZone, float expo) {
-    if (fabsf(value) < deadZone) return 0x80;
+    if (fabsf(value) < deadZone) return DroneAxis::NEUTRAL;
 
     float sign   = value > 0.0f ? 1.0f : -1.0f;
     float scaled = (fabsf(value) - deadZone) / (maxRange - deadZone);
@@ -30,21 +30,21 @@ uint8_t AccelController::mapAxis(float value, float maxRange, float deadZone, fl
 
     scaled = scaled * ((1.0f - expo) + expo * scaled);
 
-    return (uint8_t)((0.5f + sign * scaled * 0.5f) * 254.0f);
+    return (uint8_t)((0.5f + sign * scaled * 0.5f) * (float)DroneAxis::MAX);
 }
 
 void AccelController::begin() {
     _filteredRoll  = 0.0f;
     _filteredPitch = 0.0f;
     _throttle      = THROTTLE_INIT;
-    _currentRoll   = 128.0f;
-    _currentPitch  = 128.0f;
+    _currentRoll   = DroneAxis::NEUTRAL;
+    _currentPitch  = DroneAxis::NEUTRAL;
 }
 
 void AccelController::adjustThrottle(float delta) {
     _throttle += delta;
-    if (_throttle <   0.0f) _throttle =   0.0f;
-    if (_throttle > 254.0f) _throttle = 254.0f;
+    if (_throttle < (float)DroneAxis::MIN) _throttle = (float)DroneAxis::MIN;
+    if (_throttle > (float)DroneAxis::MAX) _throttle = (float)DroneAxis::MAX;
 }
 
 void AccelController::update(const ImuData& imu, DroneState& out, bool yawModeActive) {
@@ -84,8 +84,8 @@ void AccelController::update(const ImuData& imu, DroneState& out, bool yawModeAc
     // While yaw mode is toggled on, left/right tilt drives yaw instead of
     // roll (roll itself is suppressed to neutral) — replaces the gyro-rate-
     // based yaw, which was hard to control reliably.
-    out.roll  = yawModeActive ? (uint8_t)0x80         : (uint8_t)_currentRoll;
-    out.yaw   = yawModeActive ? (uint8_t)_currentRoll : (uint8_t)0x80;
+    out.roll  = yawModeActive ? DroneAxis::NEUTRAL    : (uint8_t)_currentRoll;
+    out.yaw   = yawModeActive ? (uint8_t)_currentRoll : DroneAxis::NEUTRAL;
     out.pitch = (uint8_t)_currentPitch;
     out.throttle = (uint8_t)_throttle;
     out.cmd      = DroneCmd::None;
