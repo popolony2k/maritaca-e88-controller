@@ -315,6 +315,20 @@ pio device monitor
 
 Or use the PlatformIO toolbar icons in VS Code (✓ build, → upload, plug monitor).
 
+### Alternative: CMake wrapper
+
+For tooling/IDEs that expect a standard CMake interface, a thin `CMakeLists.txt`
+wraps the PlatformIO commands above — it does not replace or duplicate the build,
+every target just shells out to `pio`:
+
+```bash
+cmake -S . -B build-cmake
+cmake --build build-cmake                    # build firmware
+cmake --build build-cmake --target upload    # flash
+cmake --build build-cmake --target monitor   # serial monitor
+cmake --build build-cmake --target clean-pio # clean PlatformIO build artifacts
+```
+
 ### platformio.ini
 
 ```ini
