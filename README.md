@@ -188,9 +188,10 @@ src/
 │
 ├── hal/
 │   ├── hal.h                   # HAL structs: BoardHal, DisplayHal, ImuHal, ButtonHal
-│   ├── m5atoms3.h              # Extern declarations: kBoard, kDisplay, kImu, kButton
-│   └── m5atoms3.cpp            # HAL implementations via M5Unified (only file that
-│                               #   includes M5Unified.h); non-capturing lambdas
+│   ├── m5atoms3.h / .cpp       # AtomS3 implementation via M5Unified; only file that
+│   │                           #   includes M5Unified.h for this board; non-capturing lambdas
+│   └── m5stickcplus2.h / .cpp  # M5StickC Plus2 implementation — same pattern, mutually
+│                               #   exclusive build (build_src_filter, see platformio.ini)
 │
 ├── comm/
 │   ├── wifi_manager.h/.cpp         # WiFi STA; scanForFirst() auto-detects drone
@@ -302,18 +303,23 @@ and remain fully testable without hardware.
 
 ### Commands
 
+The project defines two environments — `m5stack-atoms3` (default, primary
+hardware) and `m5stack-stickc-plus2` (second supported board, see below).
+`pio run` with no `-e` flag builds both; pass `-e <env>` to target one:
+
 ```bash
-# Build
-pio run
+# Build (AtomS3)
+pio run -e m5stack-atoms3
 
 # Upload
-pio run -t upload
+pio run -e m5stack-atoms3 -t upload
 
 # Serial monitor (115200 baud)
 pio device monitor
 ```
 
-Or use the PlatformIO toolbar icons in VS Code (✓ build, → upload, plug monitor).
+Or use the PlatformIO toolbar icons in VS Code (✓ build, → upload, plug monitor)
+— select the environment from the status bar first.
 
 ### Alternative: CMake wrapper
 
@@ -337,10 +343,26 @@ platform  = espressif32
 board     = m5stack-atoms3
 framework = arduino
 monitor_speed = 115200
-build_flags   = -DARDUINO_USB_CDC_ON_BOOT=1
+build_flags   = -DARDUINO_USB_CDC_ON_BOOT=1 -DBOARD_ATOMS3
+build_src_filter = +<*> -<hal/m5stickcplus2.cpp>
 lib_deps  =
     m5stack/M5Unified
 ```
+
+### Supported boards
+
+The HAL pattern (`src/hal/hal.h` + one implementation file per board) lets the
+firmware target more than one M5Stack device — business logic (`comm/`,
+`control/`, `bt/`) is identical across boards; only `src/hal/*.cpp` and a few
+`#ifdef` blocks in `display.cpp`/`main.cpp` differ.
+
+| Board | Environment | Chip | Status |
+| --- | --- | --- | --- |
+| **M5Stack AtomS3** | `m5stack-atoms3` | ESP32-S3 (BLE only) | Primary, fully working |
+| **M5StickC Plus2** | `m5stack-stickc-plus2` | ESP32-PICO-V3-02 (original ESP32 core, BLE+BR/EDR) | Builds clean; display layout and IMU axis conventions not yet tuned on physical hardware — see [m5stickcplus2.cpp](src/hal/m5stickcplus2.cpp) |
+
+Each board's `.cpp` is excluded from the other's build via `build_src_filter`,
+so a change to one board's HAL code cannot affect the other's binary.
 
 ---
 

@@ -17,8 +17,16 @@
 #include <Arduino.h>
 #include "display.h"
 
-// Layout for 128x128 display
+// Layout width: AtomS3 is a 128x128 square panel; M5StickC Plus2 is 240x135
+// landscape (after rotation) — Y-positions below were tuned for 128px height
+// but fit comfortably within 135px too, so only W needs to vary for now.
+// First-pass layout for the StickC Plus2 — expect to need visual tuning once
+// physical hardware is in hand (the existing AtomS3 layout is untouched).
+#if defined(BOARD_STICKC_PLUS2)
+static constexpr int W = 240;
+#else
 static constexpr int W = 128;
+#endif
 
 static constexpr int Y_STATUS     = 0;
 static constexpr int STATUS_BAR_H = 12;
@@ -174,7 +182,11 @@ void Display::drawImu(const ImuData& imu) {
 }
 
 void Display::drawBtStatus(BleStatus status, bool wifiOk, int batteryLevel, bool charging) {
+#if defined(BOARD_STICKC_PLUS2)
+    static constexpr int W = 240;
+#else
     static constexpr int W = 128;
+#endif
 
     static constexpr int TITLE_X = 4,  TITLE_Y = 8;
 
@@ -269,7 +281,11 @@ void Display::drawBtStatus(BleStatus status, bool wifiOk, int batteryLevel, bool
 }
 
 void Display::drawModeSelect(OperationMode selected, int secondsLeft) {
+#if defined(BOARD_STICKC_PLUS2)
+    static constexpr int W           = 240;
+#else
     static constexpr int W           = 128;
+#endif
     static constexpr int OPT_H       = 18;
     static constexpr int Y_TITLE     =   5;
     static constexpr int Y_OPT1      =  28;

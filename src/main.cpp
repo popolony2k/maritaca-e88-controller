@@ -30,7 +30,11 @@
  *       - Display routing: BT status screen or flight HUD at 10 Hz
  */
 #include <Arduino.h>
+#if defined(BOARD_STICKC_PLUS2)
+#include "hal/m5stickcplus2.h"
+#else
 #include "hal/m5atoms3.h"
+#endif
 #include "control/operation_mode.h"
 #include "control/flight_controller.h"
 #include "comm/wifi_manager.h"
@@ -120,7 +124,9 @@ void setup() {
     kBoard.begin();
 
     Serial.begin(115200);
-    Serial.setTxTimeoutMs(0);
+#if !defined(BOARD_STICKC_PLUS2)
+    Serial.setTxTimeoutMs(0); // avoids stalling on HWCDC — ESP32-S3 native-USB only, no equivalent on original ESP32
+#endif
     Serial.println("[Boot] setup start");
 
     display.begin();
