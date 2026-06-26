@@ -359,7 +359,7 @@ firmware target more than one M5Stack device — business logic (`comm/`,
 | Board | Environment | Chip | Status |
 | --- | --- | --- | --- |
 | **M5Stack AtomS3** | `m5stack-atoms3` | ESP32-S3 (BLE only) | Primary, fully working |
-| **M5StickC Plus2** | `m5stack-stickc-plus2` | ESP32-PICO-V3-02 (original ESP32 core, BLE+BR/EDR) | Builds clean; display layout and IMU axis conventions not yet tuned on physical hardware — see [m5stickcplus2.cpp](src/hal/m5stickcplus2.cpp) |
+| **M5StickC Plus2** | `m5stack-stickc-plus2` | ESP32-PICO-V3-02 (original ESP32 core, BLE+BR/EDR) | Confirmed on physical hardware: display/UI, WiFi, and iPega BLE gamepad all working. ACCEL mode (IMU tilt control) not yet verified — axis sign conventions may need re-tuning, see [m5stickcplus2.cpp](src/hal/m5stickcplus2.cpp) |
 
 Each board's `.cpp` is excluded from the other's build via `build_src_filter`,
 so a change to one board's HAL code cannot affect the other's binary.
