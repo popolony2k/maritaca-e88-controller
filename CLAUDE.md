@@ -427,6 +427,8 @@ First 200 raw reports are dumped to Serial (`[BLE] report[N] len=N: XX XX …`) 
 
 **Axis mapping:** Left stick X → roll, left stick Y → pitch (inverted), right stick X → yaw. ZR = throttle up, ZL = throttle down. Throttle is rate-based — hold ZR to climb, hold ZL to descend, release both to hold altitude.
 
+**Update (2026-06-27): this hardware ceiling is now bypassed, on a different board.** The M5StickC Plus2's chip has the BR/EDR radio the AtomS3 lacks. See `bt-host-headless` below — Switch-mode 8BitDo controllers (the exact Zero 2 from the investigation above) now work, just not on the AtomS3 and not via this `BleGamepad`/BLE code path.
+
 ### GamepadController tuning parameters
 
 Roll/pitch/yaw tuning is **per-drone** via the `GamepadConfig` struct returned by
@@ -472,6 +474,153 @@ holding the accumulated value — the drone's altitude hold then maintains the n
 altitude. For Dr.One, `FlightController::runState()` additionally overrides
 `cs.throttle` directly from the current trigger state (`0x80 + rate * 0x7F`),
 independent of this accumulator.
+
+---
+
+## bt-host-headless — Bluepad32 BT Gamepad Build (M5StickC Plus2, branch `support-bluepad32-8bitdo`)
+
+**Working, confirmed flying both drones with a real 8BitDo Zero 2 (2026-06-27).**
+
+A **separate, parallel firmware build** living at `bt-host-headless/` (repo root,
+sibling to `src/`) — not an environment within the main `platformio.ini`/`src/`
+project, and not flashed alongside the main firmware. It gives the M5StickC Plus2
+(whose ESP32-PICO-V3-02 has a genuine dual-mode BLE+BR/EDR radio, unlike the
+AtomS3's BLE-only ESP32-S3) the ability to read 8BitDo/Switch-mode controllers via
+**Bluepad32** and fly the drone — something structurally impossible on the AtomS3
+(see the 8BitDo Switch-mode section above). No display, no M5Unified — headless by
+design; HUD/battery/mode-select parity was explicitly descoped to prove "can BT
+control the drone" first.
+
+### Why a separate build, not a mode in the main firmware
+
+Bluepad32 requires `framework = espidf` (ESP-IDF native, component-based `main/`
+project layout), not `framework = arduino` (the main firmware's Arduino-sketch
+`src/` layout) — PlatformIO's `src_filter` doesn't work under ESP-IDF, and the two
+frameworks expect incompatible source layouts. So this is flashed **instead of**
+the main firmware on the same physical board, not a runtime mode switch.
+
+### Architecture: shares the main firmware's logic, doesn't duplicate it
+
+`bt-host-headless/main/CMakeLists.txt` lists `src/comm/{wifi_manager,
+drone_protocol,flow_wifi_protocol}.cpp` and `src/control/{gamepad_controller,
+accel_controller,flight_controller}.cpp` **directly via relative path**
+(`../../src/...`), with `../../src` added to `INCLUDE_DIRS` — one copy of the
+protocol/control logic, shared by both builds. Works because that code only needs
+`millis()`/`WiFiUdp`/`IPAddress`/`Serial` (present via the `arduino-esp32` core,
+included as an ESP-IDF component regardless of framework).
+
+New, build-specific files:
+
+| File | Role |
+| --- | --- |
+| `bt-host-headless/main/bp32_gamepad.h/.cpp` | `Bp32Gamepad` — mirrors `BleGamepad`'s shape (`begin()`/`update()`/`axes()`), wraps Bluepad32's `ControllerPtr` into the same `GamepadAxes` struct |
+| `bt-host-headless/main/sketch.cpp` | Headless `setup()`/`loop()` — no display/board-button code. `FlightController` gets a no-op stub `ButtonHal` (only consumed in `AccelControl` mode, never reached here); `ImuData` is a throwaway default-constructed local |
+| `bt-host-headless/main/idf_component.yml` | Fetches `arduino`/`bluepad32` on demand instead of vendoring (see below) |
+| `bt-host-headless/components/{btstack,bluepad32_arduino,cmd_nvs,cmd_system}` | Still vendored — see "Vendored vs. fetched dependencies" |
+
+**Axis mapping** (`Bp32Gamepad::update()`) — matches the iPega convention exactly
+(confirmed correct by the user after an initial backwards mapping felt wrong on
+hardware): left stick X → yaw, left stick Y → throttle up/down (0.08 deadband,
+matches `IPEGA_THROTTLE_DEADBAND`); right stick X/Y → roll/pitch. A/B/X/Y map
+straight to `GamepadBtn`; D-pad from Bluepad32's `dpad()` bitmask; LT/R1
+approximated from L1/R1 shoulder buttons (untested on real hardware — only
+A/B/X/Y and axes confirmed so far).
+
+### Two coexistence bugs found and fixed (both apply to any future BT+WiFi work)
+
+1. **WiFi reconnect race.** `WifiManager::update()`'s fixed 5 s retry (tuned for
+   the AtomS3, no concurrent BT, connects in 1-2 s) fired *while* the first
+   connection attempt was still resolving once BT coexistence stretched initial
+   WiFi association to 10-25+ s — visible as repeated `STA connect failed!
+   0x3007: ESP_ERR_WIFI_CONN`. Fixed with a new, backward-compatible
+   `WifiManager::setReconnectInterval(uint32_t ms)` setter in
+   `src/comm/wifi_manager.h/.cpp` (default unchanged at 5000 ms — the main
+   firmware's behavior is identical either way); `bt-host-headless` calls
+   `wifi.setReconnectInterval(30000)` before `begin()`.
+2. **UDP sends silently failing even with WiFi shown connected**
+   (`endPacket(): could not send data: 12`, roughly every ~800ms matching the Idle
+   keepalive cadence) — WiFi modem sleep periodically cedes the radio to BT for
+   coexistence, and a send mid-cede fails outright. Fixed with
+   `WiFi.setSleep(false)` right after `wifi.begin()` in
+   `bt-host-headless/main/sketch.cpp` only (not the shared `WifiManager` — more
+   power use for more consistent radio access is a trade-off specific to a build
+   that's always running BT concurrently, not the main firmware's optional BT
+   mode).
+
+### Vendored vs. fetched dependencies
+
+`bt-host-headless/main/idf_component.yml` declares `arduino`
+(`espressif/arduino-esp32`, pinned to commit `ac961f671abd5ae1da0a15fd4bee71ed807c2cf3`)
+and `bluepad32` (`gitlab.com/ricardoquesada/bluepad32` — **the real canonical
+repo; GitHub's `ricardoquesada/bluepad32` is a stale mirror, last tagged
+`release_v3.10.3`** — tag `4.2.0`, `path: src/components/bluepad32`) as git
+dependencies, fetched into the gitignored `managed_components/` instead of
+vendored. **`btstack` could not be externalized this way** — the vendored copy has
+ESP32 port files (`CMakeLists.txt`, `Kconfig`, `btstack_port_esp32*.c`) that don't
+exist in raw `bluekitchen/btstack`; it's template-specific wrapper code, stays
+vendored (13MB). `bluepad32_arduino` (104KB) has no independent upstream either,
+also stays vendored. This cut the repo's vendored footprint from ~79MB to ~14MB.
+
+**Gotcha:** ESP-IDF's component manager does a bare-repo mirror clone into
+`~/Library/Caches/Espressif/ComponentManager/` (a fixed user-level cache, **not**
+scoped by `PLATFORMIO_CORE_DIR`). On a machine with Git 2.38+'s
+`safe.bareRepository=explicit` default this fails outright. Fix it *without*
+touching global git config — scope it to just the build command:
+`GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=safe.bareRepository GIT_CONFIG_VALUE_0=all`.
+If a retry then fails with `git config --get remote.origin.url`, that's stale
+half-initialized state from the earlier failure — clear
+`~/Library/Caches/Espressif/ComponentManager/` and try again.
+
+### Build & flash
+
+```bash
+cd bt-host-headless
+PLATFORMIO_CORE_DIR="$(pwd)/.piocore" \
+  GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=safe.bareRepository GIT_CONFIG_VALUE_0=all \
+  pio run
+```
+
+**Always use an isolated `PLATFORMIO_CORE_DIR`** — the pioarduino-forked platform
+package this build needs shares the name `"espressif32"` with the official
+platform the main firmware uses; installing it into the default `~/.platformio/`
+cache silently overwrites the main firmware's platform and breaks its build (this
+happened once — fixed via `pio platform uninstall espressif32 && pio platform
+install espressif32@7.0.1`. Verify the main firmware's AtomS3 *and* StickC Plus2
+environments still build after any global-cache-adjacent operation).
+
+`pio run -t upload` only flashes the app binary under `framework = espidf` — must
+flash bootloader+partitions+app together manually after any change:
+
+```bash
+esptool.py --chip esp32 --port /dev/cu.usbserial-XXXX --baud 460800 \
+  write-flash --flash-mode dio --flash-freq 40m --flash-size 4MB \
+  0x1000 .pio/build/esp32dev/bootloader.bin \
+  0x8000 .pio/build/esp32dev/partitions.bin \
+  0x10000 .pio/build/esp32dev/firmware.bin
+```
+
+`pio device monitor` fails in a sandboxed/non-TTY shell
+(`termios.error: Operation not supported by device`) — read the serial port
+directly with a small pyserial script instead, explicitly setting
+`dtr=False; rts=False` before reading (the USB-serial adapter's auto-reset wiring
+otherwise holds the chip in reset/bootloader mode while the port is open).
+
+### Other ESP-IDF-native build quirks hit along the way
+
+- Platform's pinned `tool-esptoolpy` (`v5.0.0-dev1`) has a packaging bug —
+  override via `platform_packages` to `v5.3.0`.
+- `board_build.embed_txtfiles` needed for transitively-pulled `esp_insights`/
+  `esp_rainmaker` cert files (a dependency of the `arduino` component, unrelated
+  to Bluepad32 itself).
+- Combining WiFi + Bluepad32/BTstack overflows IRAM by ~11KB — fix is
+  `CONFIG_ESP_WIFI_IRAM_OPT=n` / `CONFIG_ESP_WIFI_RX_IRAM_OPT=n` in
+  `sdkconfig.defaults` (ESP-IDF 5.4 dropped the `CONFIG_ESP32_*` prefix these used
+  to have — the old name silently no-ops).
+- Default 1MB partition is too small once WiFi is added (~1.3MB firmware) — needed
+  both `CONFIG_PARTITION_TABLE_CUSTOM_FILENAME` *and* PlatformIO's
+  `board_build.partitions = partitions.csv`, plus a full `pio run -t clean`
+  rebuild (CMake doesn't notice a `partitions.csv` added after the first
+  configure pass).
 
 ---
 
