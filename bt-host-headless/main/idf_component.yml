@@ -1,0 +1,19 @@
+# Fetches the large, unmodified-by-us upstream dependencies on demand into
+# managed_components/ (already gitignored) instead of vendoring them in the
+# repo. See memory/bluepad32_prototype.md for how these exact pins were
+# confirmed (matches the boot-log version banners and the original
+# template's submodule commit).
+dependencies:
+  idf:
+    version: ">=4.1.0"
+  arduino:
+    git: https://github.com/espressif/arduino-esp32.git
+    version: ac961f671abd5ae1da0a15fd4bee71ed807c2cf3
+  bluepad32:
+    git: https://gitlab.com/ricardoquesada/bluepad32.git
+    version: "4.2.0"
+    path: src/components/bluepad32
+# btstack stays vendored in components/btstack — the template wraps raw
+# bluekitchen/btstack with ESP32-specific port files (CMakeLists.txt, Kconfig,
+# btstack_port_esp32*.c) that don't exist in the upstream repo, so a plain git
+# pointer can't reproduce it.
