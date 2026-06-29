@@ -9,10 +9,17 @@ set(srcs
         "../../src/comm/flow_wifi_protocol.cpp"
         "../../src/control/gamepad_controller.cpp"
         "../../src/control/accel_controller.cpp"
-        "../../src/control/flight_controller.cpp")
+        "../../src/control/flight_controller.cpp"
+        "../../src/hal/m5stickcplus2.cpp"
+        "../../src/ui/display.cpp")
 
-set(requires "bluepad32" "bluepad32_arduino" "arduino" "btstack")
+set(requires "bluepad32" "bluepad32_arduino" "arduino" "btstack" "M5Unified" "M5GFX")
 
 idf_component_register(SRCS "${srcs}"
                     INCLUDE_DIRS "." "../../src"
                     REQUIRES "${requires}")
+
+# src/ui/display.cpp picks its 240px-wide StickC Plus2 layout vs. the AtomS3's
+# 128px default via this macro (see platformio.ini's build_flags for the main
+# firmware's StickC Plus2 environment, which sets the same define).
+target_compile_definitions(${COMPONENT_LIB} PRIVATE BOARD_STICKC_PLUS2)

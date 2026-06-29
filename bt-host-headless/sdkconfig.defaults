@@ -14,6 +14,13 @@ CONFIG_ESP32_XTAL_FREQ_AUTO=y
 CONFIG_PARTITION_TABLE_CUSTOM=y
 CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
 
+# Adding M5GFX/M5Unified pushed the WiFi/system event-loop task's default
+# 2304-byte stack over the edge — crashed with "assert failed: spinlock_acquire
+# (lock->count == 0)" inside esp_event_loop_run, right as the "got IP" event
+# fired (classic stack-overflow-corrupts-adjacent-spinlock signature). Doubling
+# it gives headroom for the deeper call chains now running through this task.
+CONFIG_ESP_SYSTEM_EVENT_TASK_STACK_SIZE=4096
+
 # Adding WiFi alongside Bluepad32/BTstack overflows IRAM by ~11KB. Move
 # WiFi's performance-critical code from IRAM to flash to make room — this
 # prototype doesn't need WiFi's IRAM-resident speed, just coexistence.

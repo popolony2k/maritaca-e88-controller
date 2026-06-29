@@ -480,6 +480,7 @@ independent of this accumulator.
 ## bt-host-headless — Bluepad32 BT Gamepad Build (M5StickC Plus2, branch `support-bluepad32-8bitdo`)
 
 **Working, confirmed flying both drones with a real 8BitDo Zero 2 (2026-06-27).**
+**Display/HUD/battery now also working (2026-06-29)** — see "Display support" below.
 
 A **separate, parallel firmware build** living at `bt-host-headless/` (repo root,
 sibling to `src/`) — not an environment within the main `platformio.ini`/`src/`
@@ -487,9 +488,11 @@ project, and not flashed alongside the main firmware. It gives the M5StickC Plus
 (whose ESP32-PICO-V3-02 has a genuine dual-mode BLE+BR/EDR radio, unlike the
 AtomS3's BLE-only ESP32-S3) the ability to read 8BitDo/Switch-mode controllers via
 **Bluepad32** and fly the drone — something structurally impossible on the AtomS3
-(see the 8BitDo Switch-mode section above). No display, no M5Unified — headless by
-design; HUD/battery/mode-select parity was explicitly descoped to prove "can BT
-control the drone" first.
+(see the 8BitDo Switch-mode section above). First proved minimally ("can BT control
+the drone") with no display at all; display/battery have since been added the same
+way (M5Unified/M5GFX as vendored ESP-IDF components). Still no AccelControl/tilt
+mode, no mode-select screen, no physical-button gestures — this build is
+permanently `BluetoothControl`.
 
 ### Why a separate build, not a mode in the main firmware
 
@@ -514,9 +517,9 @@ New, build-specific files:
 | File | Role |
 | --- | --- |
 | `bt-host-headless/main/bp32_gamepad.h/.cpp` | `Bp32Gamepad` — mirrors `BleGamepad`'s shape (`begin()`/`update()`/`axes()`), wraps Bluepad32's `ControllerPtr` into the same `GamepadAxes` struct |
-| `bt-host-headless/main/sketch.cpp` | Headless `setup()`/`loop()` — no display/board-button code. `FlightController` gets a no-op stub `ButtonHal` (only consumed in `AccelControl` mode, never reached here); `ImuData` is a throwaway default-constructed local |
+| `bt-host-headless/main/sketch.cpp` | `setup()`/`loop()` — no board-button code (`FlightController` gets a no-op stub `ButtonHal`; only consumed in `AccelControl` mode, never reached here) and no IMU (`ImuData` is a throwaway default-constructed local), but display/battery are wired up — see "Display support" below |
 | `bt-host-headless/main/idf_component.yml` | Fetches `arduino`/`bluepad32` on demand instead of vendoring (see below) |
-| `bt-host-headless/components/{btstack,bluepad32_arduino,cmd_nvs,cmd_system}` | Still vendored — see "Vendored vs. fetched dependencies" |
+| `bt-host-headless/components/{btstack,bluepad32_arduino,cmd_nvs,cmd_system,M5Unified,M5GFX}` | Still vendored — see "Vendored vs. fetched dependencies" |
 
 **Axis mapping** (`Bp32Gamepad::update()`) — matches the iPega convention exactly
 (confirmed correct by the user after an initial backwards mapping felt wrong on
@@ -525,6 +528,57 @@ matches `IPEGA_THROTTLE_DEADBAND`); right stick X/Y → roll/pitch. A/B/X/Y map
 straight to `GamepadBtn`; D-pad from Bluepad32's `dpad()` bitmask; LT/R1
 approximated from L1/R1 shoulder buttons (untested on real hardware — only
 A/B/X/Y and axes confirmed so far).
+
+### Display support (M5Unified/M5GFX, added 2026-06-29)
+
+**M5Unified and M5GFX both ship as real ESP-IDF components**, not just
+Arduino-framework libraries — their own upstream `CMakeLists.txt` declares plain
+ESP-IDF `COMPONENT_REQUIRES` and even has a ready-made, commented-out line for
+exactly this situation:
+
+```cmake
+### If you use arduino-esp32 components, please activate next comment line.
+# list(APPEND COMPONENT_REQUIRES arduino-esp32)
+```
+
+That line hardcodes the component name `arduino-esp32`, but this project fetches
+the Arduino core under the name `arduino` (matching the upstream Bluepad32
+template's convention). Vendored `components/M5Unified` and `components/M5GFX`
+(cloned at tags `0.2.17`/`0.2.24` to match the main firmware's `lib_deps`) have
+that line changed to `list(APPEND COMPONENT_REQUIRES arduino)` instead — not a
+deeper incompatibility, just a naming mismatch between two upstream conventions.
+M5Unified's `CMakeLists.txt` also auto-detects a sibling `components/M5GFX`
+checkout by that exact capitalized name to decide its own dependency name, so the
+vendored folder names matter.
+
+`src/hal/m5stickcplus2.h/.cpp` and `src/ui/display.h/.cpp` are reused **unchanged**
+via the same relative-path pattern as the comm/control sources — no new HAL or
+display code was needed. `sketch.cpp`'s `loop()` replicates `main.cpp`'s BT-mode
+display flow (the `showBtScreen` transition logic, `markDirty()`/`sleep()`/
+`wake()`, the Idle+BT axis preview) almost verbatim, mapping `Bp32Status`'s two
+states onto the two `BleStatus` values `drawBtStatus()` actually uses (Bluepad32
+has no separate "connecting" phase the way the BLE scan/connect callbacks did).
+
+**CJK font data (efont/IPA, ~118MB of vendored *source*) was initially excluded**
+on the assumption it would bloat the firmware — turned out to be the wrong call.
+`lgfx_fonts.cpp` `#include`s those headers unconditionally with no opt-out macro,
+so excluding them is a compile error, not just dead code. Restored them and
+measured instead: M5Unified+M5GFX (fonts included) added only **~210KB** to the
+compiled firmware (1.34MB → 1.55MB) — verbose C array literal source compiles down
+to much more compact binary data than its on-disk text size suggests. Don't assume
+source size predicts binary size; measure first.
+
+**Real bug found: WiFi/system event-loop task stack overflow.** Adding
+M5Unified/M5GFX (more code, deeper call chains) pushed the event-loop task's
+default 2304-byte stack (`CONFIG_ESP_SYSTEM_EVENT_TASK_STACK_SIZE`) over the edge —
+crashed and rebooted with `assert failed: spinlock_acquire ... (lock->count == 0)`
+inside `esp_event_loop_run`, every time, right as the "got IP" WiFi event fired
+(decoded via `xtensa-esp32-elf-addr2line` against the build's own `firmware.elf` —
+don't guess at a crash site from a raw backtrace when the toolchain can decode it
+exactly). Classic stack-overflow-corrupts-adjacent-memory signature: crash site
+(deep in FreeRTOS/event-loop internals) had nothing to do with the actual cause
+(more stack pressure from unrelated new code elsewhere). Fixed by doubling it in
+`sdkconfig.defaults`: `CONFIG_ESP_SYSTEM_EVENT_TASK_STACK_SIZE=4096`.
 
 ### Two coexistence bugs found and fixed (both apply to any future BT+WiFi work)
 
@@ -560,6 +614,9 @@ ESP32 port files (`CMakeLists.txt`, `Kconfig`, `btstack_port_esp32*.c`) that don
 exist in raw `bluekitchen/btstack`; it's template-specific wrapper code, stays
 vendored (13MB). `bluepad32_arduino` (104KB) has no independent upstream either,
 also stays vendored. This cut the repo's vendored footprint from ~79MB to ~14MB.
+`M5Unified`/`M5GFX` (added later for display support, ~12MB combined) are also
+vendored rather than fetched — both need the same one-line `arduino-esp32` →
+`arduino` patch (see "Display support" above), which a registry fetch can't apply.
 
 **Gotcha:** ESP-IDF's component manager does a bare-repo mirror clone into
 `~/Library/Caches/Espressif/ComponentManager/` (a fixed user-level cache, **not**
