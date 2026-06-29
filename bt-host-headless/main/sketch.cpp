@@ -6,9 +6,10 @@
 // logic only depends on millis()/WiFiUdp/Serial — all present here via the
 // arduino-esp32 core component. Display/battery now reused the same way via
 // the vendored M5Unified/M5GFX components (see components/M5Unified,
-// components/M5GFX) — this build still has no AccelControl mode, no
-// mode-select screen, and no physical-button gestures (permanently
-// BluetoothControl; FlightController's ButtonHal stays a no-op stub).
+// components/M5GFX). Physical BtnA gestures (double-click arm/land,
+// triple-click emergency stop) reuse src/hal/m5stickcplus2's existing
+// kButton HAL. This build still has no AccelControl mode and no
+// mode-select screen (permanently BluetoothControl).
 //
 // NOTE: Bluepad32's built-in USB console (CONFIG_BLUEPAD32_USB_CONSOLE_ENABLE)
 // replaces Arduino's Serial — use Console, not Serial, for log output here.
@@ -39,16 +40,6 @@ static constexpr uint32_t DISPLAY_INTERVAL_MS    = 100; // 10 Hz, matches main.c
 static constexpr uint32_t BT_STATUS_SCREEN_MS    = 1500; // matches main.cpp
 static constexpr uint8_t  AXIS_DISPLAY_MIN       =    1; // matches main.cpp
 static constexpr float    AXIS_DISPLAY_HALF_RANGE = 127.0f; // matches main.cpp
-
-// This build never has a physical screen button — FlightController only
-// consumes ButtonHal in AccelControl mode, which this build never enters.
-static bool stubFalse() { return false; }
-static bool stubFalseMs(uint32_t) { return false; }
-static const ButtonHal kStubButton = {
-    .wasPressed  = stubFalse,
-    .wasReleased = stubFalse,
-    .pressedFor  = stubFalseMs,
-};
 
 static WifiManager      wifi;
 static DroneProtocol    blackDrone;
@@ -104,7 +95,7 @@ void setup() {
     WiFi.setSleep(false);
     activeDrone->begin();
 
-    static FlightController fc({ kStubButton, *activeDrone });
+    static FlightController fc({ kButton, *activeDrone });
     flight = &fc;
     flight->setMode(OperationMode::BluetoothControl);
     flight->begin();
