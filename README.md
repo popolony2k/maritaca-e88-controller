@@ -406,9 +406,11 @@ M5StickC Plus2 instead of the main firmware. It reuses `src/comm/` and
 
 - 8BitDo Zero 2 (Switch mode) confirmed flying both drones
 - Mode-select screen at boot (BT GAMEPAD / ACCEL TILT, 3 s countdown)
-- AccelControl/tilt mode with IMU axis corrections for this board
+- AccelControl/tilt mode with IMU axis corrections for this board — all axes confirmed on real hardware (2026-07-01)
 - Full display HUD, battery level, BtnA button gestures
 - Portrait display orientation (135×240) with a logo in the lower area
+- **BtnB (right-side button)** → single press triggers `ESP.restart()` (firmware restart)
+- Board-specific `SLEW_RATE = 6.0` (vs AtomS3's 3.0) via `BOARD_STICKC_PLUS2` preprocessor conditional — compensates for BT+WiFi coexistence reducing the effective loop rate
 
 Build and flash separately from `bt-host/`:
 

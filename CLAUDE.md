@@ -207,7 +207,7 @@ maritaca-e88-controller/
 
 ---
 
-## Current Implementation Status (2026-06-17)
+## Current Implementation Status (2026-07-01)
 
 ### Working
 
@@ -227,6 +227,7 @@ maritaca-e88-controller/
 - **Both drones confirmed to run altitude-hold firmware** (2026-06-11): `0x80` throttle = hold current altitude, deviation = continuous climb/descend rate. Throttle-hold gestures (ACCEL screen-button hold and BT-gamepad left stick/ZL/ZR) now snap back to `0x80` the instant the gesture ends, instead of leaving the drone climbing/descending indefinitely. See Throttle sections below.
 - **FLOW-WIFI Idle session maintenance** (2026-06-16): In Idle, `FlowWifiProtocol::update()` sends a slow 8800 heartbeat (every 2 s) with `throttle=0x00, cmd=0x00` so the drone knows a controller is connected; without this the drone ignores the first TakeOff command. Also sends the secondary keepalive `[0x01, 0x01]` to port 7099 at 1 Hz (matches KY UFO app behaviour). `setIdle()` uses `throttle=0x00` (not `0x80`) to prevent altitude-hold re-arm while the drone is grounded and disarmed.
 - **ACCEL mode yaw redesigned as single-click toggle + tilt** (2026-06-17): replaces the old gyro-rate-based yaw (hard to control reliably). See Yaw section under Accel Controller Tuning Parameters below.
+- **bt-host fully tuned and hardware-confirmed on M5StickC Plus2 (2026-07-01)**: BtnB (right-side button) triggers `ESP.restart()` as a one-press firmware restart; `YAW_SLEW_RATE` reduced 5% (5.0 → 4.75) for calmer yaw; `SLEW_RATE` overridden to 6.0 for `BOARD_STICKC_PLUS2` via preprocessor conditional (AtomS3 stays at 3.0) — compensates for lower effective loop rate under BT+WiFi coexistence. All AccelControl axes confirmed on real hardware.
 
 ### Open Issues
 
@@ -266,8 +267,10 @@ static constexpr float PITCH_DEAD_ZONE = 10.0f;
 static constexpr float PITCH_EXPO      =  0.5f;
 
 // Slew rate limiter
-static constexpr float SLEW_RATE       =  3.0f;  // units/frame at 25 Hz, roll/pitch
-static constexpr float YAW_SLEW_RATE   =  5.0f;  // units/frame at 25 Hz, yaw mode — snappier
+// BOARD_STICKC_PLUS2 overrides SLEW_RATE to 6.0 via preprocessor conditional
+// (BT+WiFi coexistence halves the effective loop rate vs AtomS3's clean 25 Hz)
+static constexpr float SLEW_RATE       =  3.0f;  // units/frame at 25 Hz, roll/pitch (AtomS3); 6.0 on StickC Plus2
+static constexpr float YAW_SLEW_RATE   =  4.75f; // units/frame at 25 Hz, yaw mode — snappier but calmer than roll/pitch
 static constexpr float YAW_DEAD_ZONE   =  7.0f;  // degrees, yaw mode — smaller than TILT_DEAD_ZONE
 
 // Throttle (neutral/hover)
@@ -294,10 +297,11 @@ While ON, the same left/right tilt that normally drives roll is routed to **yaw*
 roll is suppressed to neutral (`0x80`) for the duration. Pitch and throttle are unaffected
 and still work normally at the same time. Click again to switch back to roll.
 
-Yaw mode uses its own tuning (`YAW_DEAD_ZONE = 7.0f`, `YAW_SLEW_RATE = 5.0f`) — a smaller
+Yaw mode uses its own tuning (`YAW_DEAD_ZONE = 7.0f`, `YAW_SLEW_RATE = 4.75f`) — a smaller
 dead zone and faster slew than plain roll (`TILT_DEAD_ZONE = 10.0f`, `SLEW_RATE = 3.0f`),
 since yaw is a deliberate momentary gesture rather than sustained tilt and benefits from a
-snappier feel. Implemented in `AccelController::update(imu, out, yawModeActive)` —
+snappier feel. `YAW_SLEW_RATE` was reduced 5% (5.0 → 4.75, 2026-07-01) after hardware
+testing confirmed calmer yaw response on both boards. Implemented in `AccelController::update(imu, out, yawModeActive)` —
 `_currentRoll`'s slewed value is directly reused as the yaw output when active, no separate
 yaw filter state.
 
@@ -481,7 +485,8 @@ independent of this accumulator.
 
 **Working, confirmed flying both drones with a real 8BitDo Zero 2 (2026-06-27).**
 **Display/HUD/battery, AccelControl/tilt mode, physical BtnA gestures, and PNG logo
-all working (2026-06-29/30)** — see subsections below.
+all working (2026-06-29/30). All AccelControl tuning confirmed on real hardware and
+BtnB restart wired (2026-07-01)** — see subsections below.
 
 A **separate, parallel firmware build** living at `bt-host/` (repo root,
 sibling to `src/`) — not an environment within the main `platformio.ini`/`src/`
@@ -600,7 +605,7 @@ exactly). Classic stack-overflow-corrupts-adjacent-memory signature: crash site
    that's always running BT concurrently, not the main firmware's optional BT
    mode).
 
-### AccelControl/tilt mode, BtnA gestures, and per-board throttle rates (2026-06-30)
+### AccelControl/tilt mode, BtnA gestures, per-board tuning, and BtnB restart (2026-06-30/07-01)
 
 AccelControl mode, the 3-second boot mode-select screen, and physical BtnA button
 gestures are all wired up identically to the main firmware (mirroring `main.cpp`)
@@ -627,6 +632,21 @@ felt too slow on the StickC Plus2's physical button. `FlightDeps` was extended w
 board passes its own rates without touching shared `FlightController` code.
 `bt-host` uses `STICKC_THROTTLE_RATE_UP = 1.0f` / `STICKC_THROTTLE_RATE_DOWN = 0.5f`
 (≈3× faster, confirmed better feel on hardware).
+
+**BtnB (right-side button) — firmware restart (2026-07-01):**
+`kButtonReset` HAL (`src/hal/m5stickcplus2.h/.cpp`) maps `M5.BtnB` to a `ButtonHal`
+instance. A single release triggers `ESP.restart()` in `sketch.cpp`. Emergency stop
+remains triple-click on BtnA as before — BtnB is purely a soft reset for quick
+firmware restarts without needing the power button.
+
+**Per-board AccelControl SLEW_RATE override (2026-07-01):**
+Bluepad32 + WiFi coexistence reduces the bt-host loop's effective frame rate to roughly
+half the AtomS3's clean 25 Hz, making `SLEW_RATE = 3.0f` feel sluggish on roll/pitch.
+`accel_controller.h` uses a `#if defined(BOARD_STICKC_PLUS2)` conditional to set
+`SLEW_RATE = 6.0f` for this build only (AtomS3 unchanged at 3.0). Confirmed correct
+feel on hardware after testing at 4.5 (still slow) → 6.0 (matches AtomS3 feel).
+`YAW_SLEW_RATE` is **not** board-specific — shared value reduced to 4.75 (–5%) for
+both boards after hardware testing.
 
 **Portrait mode and PNG logo (2026-06-30):**
 The M5StickC Plus2 display in landscape (rotation 1, 240×135) left the screen
