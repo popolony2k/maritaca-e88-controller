@@ -59,6 +59,8 @@ const DisplayHal kDisplay {
     .drawRect     = [](int x, int y, int w, int h, uint16_t c) { M5.Display.drawRect(x, y, w, h, c); },
     .setTextColor = [](uint16_t fg, uint16_t bg)               { M5.Display.setTextColor(fg, bg); },
     .drawString   = [](const char* s, int x, int y)            { M5.Display.drawString(s, x, y); },
+    .drawPng      = [](const uint8_t* d, size_t len, int x, int y, int w, int h, float sx, float sy) {
+                        M5.Display.drawPng(d, len, x, y, w, h, 0, 0, sx, sy); },
 };
 
 const ImuHal kImu {

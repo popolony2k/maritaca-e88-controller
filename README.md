@@ -81,9 +81,10 @@ Supported controllers:
 - **Double-click** → calibrate → arm → fly (BT gamepad: use button A instead)
 - **Triple-click** → emergency stop, return to idle
 
-### Boot mode selection
+### Boot sequence
 
-On power-on a menu screen appears for 3 seconds.  Pressing the screen button cycles between modes; releasing the button resets the 3-second countdown.  Default is **BT GAMEPAD**.
+1. **Splash screen** — the `popolon.png` logo fills the screen for 2 seconds.
+2. **Mode selection menu** — appears for 3 seconds. Pressing the screen button cycles between modes; releasing resets the 3-second countdown. Default is **BT GAMEPAD**.
 
 ---
 

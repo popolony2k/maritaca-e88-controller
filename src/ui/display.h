@@ -44,6 +44,14 @@ public:
     /** @brief Initialise the display and clear to black. Call once in setup(). */
     void begin();
 
+    /**
+     * @brief Render the boot splash screen (logo, black background).
+     *
+     * Intended to be shown once at startup for SPLASH_DURATION_MS before
+     * the mode-selection menu. The caller is responsible for the delay.
+     */
+    void drawSplash();
+
     /** @brief Force a full screen clear and label redraw on the next update() call. */
     void markDirty();
 

@@ -50,8 +50,13 @@ static constexpr float DEFAULT_THROTTLE_RATE_DOWN = 0.10f; ///< Descend rate —
 struct FlightDeps {
     const ButtonHal&   button; ///< Screen button abstraction.
     DroneProtocolBase& drone;  ///< UDP control protocol driver (any variant).
-    float throttleRateUp   = DEFAULT_THROTTLE_RATE_UP;   ///< AccelControl climb rate (units/frame at 25 Hz).
-    float throttleRateDown = DEFAULT_THROTTLE_RATE_DOWN; ///< AccelControl descend rate (units/frame at 25 Hz).
+    float throttleRateUp;   ///< AccelControl climb rate (units/frame at 25 Hz).
+    float throttleRateDown; ///< AccelControl descend rate (units/frame at 25 Hz).
+
+    FlightDeps(const ButtonHal& b, DroneProtocolBase& d,
+               float up = DEFAULT_THROTTLE_RATE_UP,
+               float dn = DEFAULT_THROTTLE_RATE_DOWN)
+        : button(b), drone(d), throttleRateUp(up), throttleRateDown(dn) {}
 };
 
 /**

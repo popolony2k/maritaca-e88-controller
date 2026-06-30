@@ -16,11 +16,10 @@
  */
 #include <Arduino.h>
 #include "display.h"
-#if defined(BOARD_STICKC_PLUS2)
-#include <M5Unified.h>
 #include "../resources/popolon_png.h"
-static constexpr int LOGO_Y     = 115; ///< Top of the logo area (below HUD).
-static constexpr int LOGO_SIZE  = 112; ///< Scale image to fit portrait lower area.
+#if defined(BOARD_STICKC_PLUS2)
+static constexpr int LOGO_Y    = 115; ///< Top of the logo area (below HUD).
+static constexpr int LOGO_SIZE = 112; ///< Scale image to fit portrait lower area.
 #endif
 
 // Layout width: AtomS3 is a 128x128 square panel; M5StickC Plus2 is 240x135
@@ -112,6 +111,23 @@ void Display::begin() {
     _btScreenReady    = false;
 }
 
+void Display::drawSplash() {
+#if defined(BOARD_STICKC_PLUS2)
+    static constexpr int SPLASH_SIZE = 128;
+    static constexpr int SPLASH_X    = (135 - SPLASH_SIZE) / 2;  // centre in 135px portrait width
+    static constexpr int SPLASH_Y    = (240 - SPLASH_SIZE) / 2;  // centre in 240px portrait height
+#else
+    static constexpr int SPLASH_SIZE = W;   // 128 — fills the square 128×128 AtomS3 screen exactly
+    static constexpr int SPLASH_X    = 0;
+    static constexpr int SPLASH_Y    = 0;
+#endif
+    _hal.fillScreen(Rgb565::Black);
+    _hal.drawPng(POPOLON_PNG, POPOLON_PNG_SIZE,
+                 SPLASH_X, SPLASH_Y, SPLASH_SIZE, SPLASH_SIZE,
+                 (float)SPLASH_SIZE / POPOLON_PNG_W,
+                 (float)SPLASH_SIZE / POPOLON_PNG_H);
+}
+
 void Display::markDirty() {
     _needsFullRedraw = true;
     _btScreenReady   = false;
@@ -136,12 +152,11 @@ void Display::update(bool wifiConnected, FlightState flightState,
         label(RHS_X, YAW_LBL_Y, "YAW");
         label(RHS_X, PCH_LBL_Y, "PCH", Rgb565::DarkGrey);
 #if defined(BOARD_STICKC_PLUS2)
-        M5.Display.drawPng(POPOLON_PNG, POPOLON_PNG_SIZE,
-                           (W - LOGO_SIZE) / 2, LOGO_Y,
-                           LOGO_SIZE, LOGO_SIZE,
-                           0, 0,
-                           (float)LOGO_SIZE / POPOLON_PNG_W,
-                           (float)LOGO_SIZE / POPOLON_PNG_H);
+        _hal.drawPng(POPOLON_PNG, POPOLON_PNG_SIZE,
+                     (W - LOGO_SIZE) / 2, LOGO_Y,
+                     LOGO_SIZE, LOGO_SIZE,
+                     (float)LOGO_SIZE / POPOLON_PNG_W,
+                     (float)LOGO_SIZE / POPOLON_PNG_H);
 #endif
         _needsFullRedraw = false;
     }
@@ -232,12 +247,11 @@ void Display::drawBtStatus(BleStatus status, bool wifiOk, int batteryLevel, bool
         _hal.setTextColor(Rgb565::White, Rgb565::Black);
         _hal.drawString("== BT GAMEPAD ==", TITLE_X, TITLE_Y);
 #if defined(BOARD_STICKC_PLUS2)
-        M5.Display.drawPng(POPOLON_PNG, POPOLON_PNG_SIZE,
-                           (W - LOGO_SIZE) / 2, LOGO_Y,
-                           LOGO_SIZE, LOGO_SIZE,
-                           0, 0,
-                           (float)LOGO_SIZE / POPOLON_PNG_W,
-                           (float)LOGO_SIZE / POPOLON_PNG_H);
+        _hal.drawPng(POPOLON_PNG, POPOLON_PNG_SIZE,
+                     (W - LOGO_SIZE) / 2, LOGO_Y,
+                     LOGO_SIZE, LOGO_SIZE,
+                     (float)LOGO_SIZE / POPOLON_PNG_W,
+                     (float)LOGO_SIZE / POPOLON_PNG_H);
 #endif
         _btScreenReady = true;
     }

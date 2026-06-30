@@ -148,6 +148,8 @@ Charging status is **not detectable** on this hardware (`isCharging()` always re
 - LovyanGFX rotation values: 0=0°, 1=90°CW, 2=180°, 3=270°CW — no library constants, use integers.
 - Display is rotated 270° (`ROTATION_270 = 3`), screen is 128×128.
 - Display is a pure renderer — receives values, does not fetch data from sources.
+- `DisplayHal` includes `drawPng(data, len, x, y, w, h, scaleX, scaleY)` — M5Unified PNG decoding is fully behind the HAL. `display.cpp` does **not** include `M5Unified.h`. The PNG header (`src/resources/popolon_png.h`) is always included on all boards.
+- `Display::drawSplash()` fills the screen black then draws the PNG scaled to fit: 128×128 on AtomS3 (fills the square panel), 128×128 centered in the 135×240 portrait panel on StickC Plus2. Called once in `setup()` for `SPLASH_DURATION_MS = 2000` before `runModeSelection()`.
 
 ### M5Unified display quick reference
 
@@ -207,7 +209,7 @@ maritaca-e88-controller/
 
 ---
 
-## Current Implementation Status (2026-07-01)
+## Current Implementation Status (2026-07-02)
 
 ### Working
 
@@ -228,6 +230,7 @@ maritaca-e88-controller/
 - **FLOW-WIFI Idle session maintenance** (2026-06-16): In Idle, `FlowWifiProtocol::update()` sends a slow 8800 heartbeat (every 2 s) with `throttle=0x00, cmd=0x00` so the drone knows a controller is connected; without this the drone ignores the first TakeOff command. Also sends the secondary keepalive `[0x01, 0x01]` to port 7099 at 1 Hz (matches KY UFO app behaviour). `setIdle()` uses `throttle=0x00` (not `0x80`) to prevent altitude-hold re-arm while the drone is grounded and disarmed.
 - **ACCEL mode yaw redesigned as single-click toggle + tilt** (2026-06-17): replaces the old gyro-rate-based yaw (hard to control reliably). See Yaw section under Accel Controller Tuning Parameters below.
 - **bt-host fully tuned and hardware-confirmed on M5StickC Plus2 (2026-07-01)**: BtnB (right-side button) triggers `ESP.restart()` as a one-press firmware restart; `YAW_SLEW_RATE` reduced 5% (5.0 → 4.75) for calmer yaw; `SLEW_RATE` overridden to 6.0 for `BOARD_STICKC_PLUS2` via preprocessor conditional (AtomS3 stays at 3.0) — compensates for lower effective loop rate under BT+WiFi coexistence. All AccelControl axes confirmed on real hardware.
+- **Boot splash screen (2026-07-02)**: `popolon.png` displayed full-screen for 2 s at every boot, before the SELECT MODE menu. AtomS3: 128×128 fills the square screen entirely. StickC Plus2: 128×128 centered in the 135×240 portrait panel. `DisplayHal::drawPng()` added — PNG decoding is now fully behind the HAL; `display.cpp` no longer includes `M5Unified.h` directly. `FlightDeps` gained an explicit constructor (C++11 aggregate restriction — default member initializers make a struct non-aggregate in C++11, breaking brace-init; constructor with defaults preserves all existing call sites).
 
 ### Open Issues
 
