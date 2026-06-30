@@ -78,12 +78,16 @@ const ImuHal kImu {
     .getGyro  = [](float* gx, float* gy, float* gz) -> bool { return M5.Imu.getGyro(gx, gy, gz); },
 };
 
-// BtnB (side button) is intentionally unused — this first port keeps the
-// existing single-button gesture scheme identical to the AtomS3. Wiring
-// BtnB in as a dedicated control is a deliberate follow-up, not part of
-// keeping behavior unchanged during the initial port.
 const ButtonHal kButton {
     .wasPressed  = []()            -> bool { return M5.BtnA.wasPressed(); },
     .wasReleased = []()            -> bool { return M5.BtnA.wasReleased(); },
     .pressedFor  = [](uint32_t ms) -> bool { return (bool)M5.BtnA.pressedFor(ms); },
+};
+
+// BtnB (right side button) — wired as a dedicated emergency stop so a single
+// press can cut motors without requiring the triple-click gesture on BtnA.
+const ButtonHal kButtonReset {
+    .wasPressed  = []()            -> bool { return M5.BtnB.wasPressed(); },
+    .wasReleased = []()            -> bool { return M5.BtnB.wasReleased(); },
+    .pressedFor  = [](uint32_t ms) -> bool { return (bool)M5.BtnB.pressedFor(ms); },
 };

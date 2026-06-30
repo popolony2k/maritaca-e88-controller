@@ -41,6 +41,10 @@ void FlightController::begin() {
     // Do NOT call enterState() — exitAppMode() must not fire at boot.
 }
 
+void FlightController::triggerEmergency() {
+    if (_state != FlightState::Idle) enterState(FlightState::Emergency);
+}
+
 void FlightController::update(const ImuData& imu, const GamepadAxes& gamepad, bool wifiOk) {
     _lastGamepadAxes = gamepad;
     handleButton(wifiOk);

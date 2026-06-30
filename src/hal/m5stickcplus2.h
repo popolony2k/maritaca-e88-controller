@@ -30,4 +30,5 @@
 extern const BoardHal   kBoard;   ///< Board lifecycle and power management (built-in PMIC battery).
 extern const DisplayHal kDisplay; ///< 135×240 LCD (ST7789-family), rotated for landscape HUD.
 extern const ImuHal     kImu;     ///< Built-in accelerometer + gyroscope.
-extern const ButtonHal  kButton;  ///< Front button (BtnA) — side button (BtnB) intentionally unused.
+extern const ButtonHal  kButton;       ///< Front button (BtnA) — main gesture controller.
+extern const ButtonHal  kButtonReset;  ///< Right side button (BtnB) — dedicated emergency stop.
