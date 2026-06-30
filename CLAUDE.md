@@ -427,7 +427,7 @@ First 200 raw reports are dumped to Serial (`[BLE] report[N] len=N: XX XX …`) 
 
 **Axis mapping:** Left stick X → roll, left stick Y → pitch (inverted), right stick X → yaw. ZR = throttle up, ZL = throttle down. Throttle is rate-based — hold ZR to climb, hold ZL to descend, release both to hold altitude.
 
-**Update (2026-06-27): this hardware ceiling is now bypassed, on a different board.** The M5StickC Plus2's chip has the BR/EDR radio the AtomS3 lacks. See `bt-host-headless` below — Switch-mode 8BitDo controllers (the exact Zero 2 from the investigation above) now work, just not on the AtomS3 and not via this `BleGamepad`/BLE code path.
+**Update (2026-06-27): this hardware ceiling is now bypassed, on a different board.** The M5StickC Plus2's chip has the BR/EDR radio the AtomS3 lacks. See `bt-host` below — Switch-mode 8BitDo controllers (the exact Zero 2 from the investigation above) now work, just not on the AtomS3 and not via this `BleGamepad`/BLE code path.
 
 ### GamepadController tuning parameters
 
@@ -477,13 +477,13 @@ independent of this accumulator.
 
 ---
 
-## bt-host-headless — Bluepad32 BT Gamepad Build (M5StickC Plus2, branch `support-bluepad32-8bitdo`)
+## bt-host — Bluepad32 BT Gamepad Build (M5StickC Plus2, branch `support-bluepad32-8bitdo`)
 
 **Working, confirmed flying both drones with a real 8BitDo Zero 2 (2026-06-27).**
 **Display/HUD/battery, AccelControl/tilt mode, physical BtnA gestures, and PNG logo
 all working (2026-06-29/30)** — see subsections below.
 
-A **separate, parallel firmware build** living at `bt-host-headless/` (repo root,
+A **separate, parallel firmware build** living at `bt-host/` (repo root,
 sibling to `src/`) — not an environment within the main `platformio.ini`/`src/`
 project, and not flashed alongside the main firmware. It gives the M5StickC Plus2
 (whose ESP32-PICO-V3-02 has a genuine dual-mode BLE+BR/EDR radio, unlike the
@@ -503,7 +503,7 @@ the main firmware on the same physical board, not a runtime mode switch.
 
 ### Architecture: shares the main firmware's logic, doesn't duplicate it
 
-`bt-host-headless/main/CMakeLists.txt` lists `src/comm/{wifi_manager,
+`bt-host/main/CMakeLists.txt` lists `src/comm/{wifi_manager,
 drone_protocol,flow_wifi_protocol}.cpp` and `src/control/{gamepad_controller,
 accel_controller,flight_controller}.cpp` **directly via relative path**
 (`../../src/...`), with `../../src` added to `INCLUDE_DIRS` — one copy of the
@@ -515,10 +515,10 @@ New, build-specific files:
 
 | File | Role |
 | --- | --- |
-| `bt-host-headless/main/bp32_gamepad.h/.cpp` | `Bp32Gamepad` — mirrors `BleGamepad`'s shape (`begin()`/`update()`/`axes()`), wraps Bluepad32's `ControllerPtr` into the same `GamepadAxes` struct |
-| `bt-host-headless/main/sketch.cpp` | `setup()`/`loop()` — full feature parity with main firmware's BT mode; mode-select screen at boot; AccelControl wired to real IMU via `kImu`; BtnA gestures via real `kButton`; board-specific throttle rates via `FlightDeps` |
-| `bt-host-headless/main/idf_component.yml` | Fetches `arduino`/`bluepad32` on demand instead of vendoring (see below) |
-| `bt-host-headless/components/{btstack,bluepad32_arduino,cmd_nvs,cmd_system,M5Unified,M5GFX}` | Still vendored — see "Vendored vs. fetched dependencies" |
+| `bt-host/main/bp32_gamepad.h/.cpp` | `Bp32Gamepad` — mirrors `BleGamepad`'s shape (`begin()`/`update()`/`axes()`), wraps Bluepad32's `ControllerPtr` into the same `GamepadAxes` struct |
+| `bt-host/main/sketch.cpp` | `setup()`/`loop()` — full feature parity with main firmware's BT mode; mode-select screen at boot; AccelControl wired to real IMU via `kImu`; BtnA gestures via real `kButton`; board-specific throttle rates via `FlightDeps` |
+| `bt-host/main/idf_component.yml` | Fetches `arduino`/`bluepad32` on demand instead of vendoring (see below) |
+| `bt-host/components/{btstack,bluepad32_arduino,cmd_nvs,cmd_system,M5Unified,M5GFX}` | Still vendored — see "Vendored vs. fetched dependencies" |
 
 **Axis mapping** (`Bp32Gamepad::update()`) — matches the iPega convention exactly
 (confirmed correct by the user after an initial backwards mapping felt wrong on
@@ -588,14 +588,14 @@ exactly). Classic stack-overflow-corrupts-adjacent-memory signature: crash site
    0x3007: ESP_ERR_WIFI_CONN`. Fixed with a new, backward-compatible
    `WifiManager::setReconnectInterval(uint32_t ms)` setter in
    `src/comm/wifi_manager.h/.cpp` (default unchanged at 5000 ms — the main
-   firmware's behavior is identical either way); `bt-host-headless` calls
+   firmware's behavior is identical either way); `bt-host` calls
    `wifi.setReconnectInterval(30000)` before `begin()`.
 2. **UDP sends silently failing even with WiFi shown connected**
    (`endPacket(): could not send data: 12`, roughly every ~800ms matching the Idle
    keepalive cadence) — WiFi modem sleep periodically cedes the radio to BT for
    coexistence, and a send mid-cede fails outright. Fixed with
    `WiFi.setSleep(false)` right after `wifi.begin()` in
-   `bt-host-headless/main/sketch.cpp` only (not the shared `WifiManager` — more
+   `bt-host/main/sketch.cpp` only (not the shared `WifiManager` — more
    power use for more consistent radio access is a trade-off specific to a build
    that's always running BT concurrently, not the main firmware's optional BT
    mode).
@@ -625,7 +625,7 @@ felt too slow on the StickC Plus2's physical button. `FlightDeps` was extended w
 `throttleRateUp`/`throttleRateDown` fields (defaulting to the AtomS3 values via
 `DEFAULT_THROTTLE_RATE_UP/DOWN` named constants in `flight_controller.h`) so each
 board passes its own rates without touching shared `FlightController` code.
-`bt-host-headless` uses `STICKC_THROTTLE_RATE_UP = 1.0f` / `STICKC_THROTTLE_RATE_DOWN = 0.5f`
+`bt-host` uses `STICKC_THROTTLE_RATE_UP = 1.0f` / `STICKC_THROTTLE_RATE_DOWN = 0.5f`
 (≈3× faster, confirmed better feel on hardware).
 
 **Portrait mode and PNG logo (2026-06-30):**
@@ -642,7 +642,7 @@ redraws only (`_btScreenReady` / `_needsFullRedraw` gates) — zero impact on th
 
 ### Vendored vs. fetched dependencies
 
-`bt-host-headless/main/idf_component.yml` declares `arduino`
+`bt-host/main/idf_component.yml` declares `arduino`
 (`espressif/arduino-esp32`, pinned to commit `ac961f671abd5ae1da0a15fd4bee71ed807c2cf3`)
 and `bluepad32` (`gitlab.com/ricardoquesada/bluepad32` — **the real canonical
 repo; GitHub's `ricardoquesada/bluepad32` is a stale mirror, last tagged
@@ -670,7 +670,7 @@ half-initialized state from the earlier failure — clear
 ### Build & flash
 
 ```bash
-cd bt-host-headless
+cd bt-host
 PLATFORMIO_CORE_DIR="$(pwd)/.piocore" \
   GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=safe.bareRepository GIT_CONFIG_VALUE_0=all \
   pio run
