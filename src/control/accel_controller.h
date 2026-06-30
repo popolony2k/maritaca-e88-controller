@@ -107,7 +107,7 @@ private:
 
     // ---- Slew rate limiter ---------------------------------------------
 #if defined(BOARD_STICKC_PLUS2)
-    static constexpr float SLEW_RATE       =  4.5f; ///< Max output change per frame — increased vs AtomS3 to compensate for lower effective loop rate under BT coexistence.
+    static constexpr float SLEW_RATE       =  6.0f; ///< Max output change per frame — 2x AtomS3 to compensate for lower effective loop rate under BT coexistence.
 #else
     static constexpr float SLEW_RATE       =  3.0f; ///< Max output change per frame at 25 Hz.
 #endif
