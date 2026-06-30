@@ -32,3 +32,4 @@ __MACOSX/
 
 # Packet captures
 *.pcap
+doc/article-7-draft.html
