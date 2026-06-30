@@ -359,7 +359,7 @@ firmware target more than one M5Stack device — business logic (`comm/`,
 | Board | Environment | Chip | Status |
 | --- | --- | --- | --- |
 | **M5Stack AtomS3** | `m5stack-atoms3` | ESP32-S3 (BLE only) | Primary, fully working |
-| **M5StickC Plus2** | `m5stack-stickc-plus2` | ESP32-PICO-V3-02 (original ESP32 core, BLE+BR/EDR) | Confirmed on physical hardware: display/UI, WiFi, and iPega BLE gamepad all working. ACCEL mode (IMU tilt control) not yet verified — axis sign conventions may need re-tuning, see [m5stickcplus2.cpp](src/hal/m5stickcplus2.cpp) |
+| **M5StickC Plus2** | `m5stack-stickc-plus2` | ESP32-PICO-V3-02 (original ESP32 core, BLE+BR/EDR) | Confirmed on physical hardware: display/UI, WiFi, iPega BLE gamepad, and AccelControl/tilt all working. IMU axes require a swap+sign correction in `m5stickcplus2.cpp` — see `kImu.getAccel`. Also supports 8BitDo/Switch-mode controllers via the separate `bt-host-headless/` firmware build (Bluepad32 + ESP-IDF native — see below). |
 
 Each board's `.cpp` is excluded from the other's build via `build_src_filter`,
 so a change to one board's HAL code cannot affect the other's binary.
@@ -371,11 +371,16 @@ so a change to one board's HAL code cannot affect the other's binary.
 ```text
 maritaca-e88-controller/
 ├── src/                        # Firmware source (see Architecture above)
+│   └── resources/              # Embedded assets (PNG images as C arrays)
+├── bt-host-headless/           # Separate ESP-IDF-native build for Bluepad32/8BitDo
+│   ├── main/                   # ESP-IDF component: sketch.cpp, bp32_gamepad.h/.cpp
+│   └── components/             # Vendored ESP-IDF components (M5Unified, M5GFX, btstack…)
 ├── include/                    # Shared headers (currently unused)
 ├── lib/                        # Local libraries (currently unused)
 ├── test/                       # PlatformIO unit tests (placeholder)
 ├── resources/
-│   └── pcap/                   # Raw packet captures used for protocol RE
+│   ├── pcap/                   # Raw packet captures used for protocol RE
+│   └── images/                 # Source images for embedded assets
 ├── doc/
 │   └── vscode/                 # Reference copies of .vscode config files
 ├── packet-analysis-conversation.md  # Protocol reverse-engineering notes
@@ -383,6 +388,46 @@ maritaca-e88-controller/
 ├── CLAUDE.md                   # AI-assistant context and coding conventions
 └── README.md
 ```
+
+---
+
+## bt-host-headless — 8BitDo / Switch-mode BT gamepad support
+
+The AtomS3's ESP32-S3 has no Bluetooth Classic (BR/EDR) radio — Switch-mode
+controllers (8BitDo Zero 2, etc.) physically cannot connect to it. The M5StickC
+Plus2's ESP32-PICO-V3-02 has a genuine dual-mode radio, but integrating Bluepad32
+(the BR/EDR-capable HID host library) requires `framework = espidf`, which is
+incompatible with the main firmware's `framework = arduino` in a single PlatformIO
+project.
+
+`bt-host-headless/` is a **separate, parallel firmware build** that runs on the
+M5StickC Plus2 instead of the main firmware. It reuses `src/comm/` and
+`src/control/` sources directly (shared, no duplication) and provides:
+
+- 8BitDo Zero 2 (Switch mode) confirmed flying both drones
+- Mode-select screen at boot (BT GAMEPAD / ACCEL TILT, 3 s countdown)
+- AccelControl/tilt mode with IMU axis corrections for this board
+- Full display HUD, battery level, BtnA button gestures
+- Portrait display orientation (135×240) with a logo in the lower area
+
+Build and flash separately from `bt-host-headless/`:
+
+```bash
+cd bt-host-headless
+PLATFORMIO_CORE_DIR="$(pwd)/.piocore" \
+  GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=safe.bareRepository GIT_CONFIG_VALUE_0=all \
+  pio run
+
+# Flash all three pieces manually (pio run -t upload only flashes the app):
+esptool.py --chip esp32 --port /dev/cu.usbserial-XXXX --baud 460800 \
+  write-flash --flash-mode dio --flash-freq 40m --flash-size 4MB \
+  0x1000 .pio/build/esp32dev/bootloader.bin \
+  0x8000 .pio/build/esp32dev/partitions.bin \
+  0x10000 .pio/build/esp32dev/firmware.bin
+```
+
+See `CLAUDE.md` → *bt-host-headless* for full build quirks, isolation requirements,
+and IMU calibration notes.
 
 ---
 

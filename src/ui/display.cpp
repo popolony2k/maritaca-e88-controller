@@ -16,6 +16,12 @@
  */
 #include <Arduino.h>
 #include "display.h"
+#if defined(BOARD_STICKC_PLUS2)
+#include <M5Unified.h>
+#include "../resources/popolon_png.h"
+static constexpr int LOGO_Y     = 115; ///< Top of the logo area (below HUD).
+static constexpr int LOGO_SIZE  = 112; ///< Scale image to fit portrait lower area.
+#endif
 
 // Layout width: AtomS3 is a 128x128 square panel; M5StickC Plus2 is 240x135
 // landscape (after rotation) — Y-positions below were tuned for 128px height
@@ -23,7 +29,7 @@
 // First-pass layout for the StickC Plus2 — expect to need visual tuning once
 // physical hardware is in hand (the existing AtomS3 layout is untouched).
 #if defined(BOARD_STICKC_PLUS2)
-static constexpr int W = 240;
+static constexpr int W = 135;
 #else
 static constexpr int W = 128;
 #endif
@@ -129,6 +135,14 @@ void Display::update(bool wifiConnected, FlightState flightState,
         label(RHS_X, ROL_LBL_Y, "ROL");
         label(RHS_X, YAW_LBL_Y, "YAW");
         label(RHS_X, PCH_LBL_Y, "PCH", Rgb565::DarkGrey);
+#if defined(BOARD_STICKC_PLUS2)
+        M5.Display.drawPng(POPOLON_PNG, POPOLON_PNG_SIZE,
+                           (W - LOGO_SIZE) / 2, LOGO_Y,
+                           LOGO_SIZE, LOGO_SIZE,
+                           0, 0,
+                           (float)LOGO_SIZE / POPOLON_PNG_W,
+                           (float)LOGO_SIZE / POPOLON_PNG_H);
+#endif
         _needsFullRedraw = false;
     }
 
@@ -183,7 +197,7 @@ void Display::drawImu(const ImuData& imu) {
 
 void Display::drawBtStatus(BleStatus status, bool wifiOk, int batteryLevel, bool charging) {
 #if defined(BOARD_STICKC_PLUS2)
-    static constexpr int W = 240;
+    static constexpr int W = 135;
 #else
     static constexpr int W = 128;
 #endif
@@ -217,6 +231,14 @@ void Display::drawBtStatus(BleStatus status, bool wifiOk, int batteryLevel, bool
         _hal.fillScreen(Rgb565::Black);
         _hal.setTextColor(Rgb565::White, Rgb565::Black);
         _hal.drawString("== BT GAMEPAD ==", TITLE_X, TITLE_Y);
+#if defined(BOARD_STICKC_PLUS2)
+        M5.Display.drawPng(POPOLON_PNG, POPOLON_PNG_SIZE,
+                           (W - LOGO_SIZE) / 2, LOGO_Y,
+                           LOGO_SIZE, LOGO_SIZE,
+                           0, 0,
+                           (float)LOGO_SIZE / POPOLON_PNG_W,
+                           (float)LOGO_SIZE / POPOLON_PNG_H);
+#endif
         _btScreenReady = true;
     }
 
@@ -282,7 +304,7 @@ void Display::drawBtStatus(BleStatus status, bool wifiOk, int batteryLevel, bool
 
 void Display::drawModeSelect(OperationMode selected, int secondsLeft) {
 #if defined(BOARD_STICKC_PLUS2)
-    static constexpr int W           = 240;
+    static constexpr int W           = 135;
 #else
     static constexpr int W           = 128;
 #endif

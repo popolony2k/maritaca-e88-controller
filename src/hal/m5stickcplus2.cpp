@@ -31,11 +31,10 @@
  */
 
 /// LovyanGFX rotation constants (0=0°, 1=90°CW, 2=180°, 3=270°CW).
-/// Native panel is 135(w)x240(h) portrait at rotation 0; rotation 1 gives a
-/// 240x135 landscape framebuffer to match this project's HUD orientation.
-/// TODO: confirm on physical hardware which rotation reads "upright" given
-/// how the unit will actually be held — flagged in the porting plan.
-static constexpr uint8_t ROTATION_LANDSCAPE = 1;
+/// Native panel is 135(w)x240(h) portrait at rotation 0.
+/// Rotation 0 = portrait (135×240), 90°CCW from previous landscape orientation —
+/// confirmed preferred ergonomic hold on real hardware.
+static constexpr uint8_t ROTATION_PORTRAIT = 0;
 
 static constexpr uint8_t DEFAULT_BRIGHTNESS = 128; ///< Initial backlight level on begin().
 static constexpr uint8_t DEFAULT_TEXT_SIZE  =   1;  ///< Normal (1x) text scale.
@@ -50,7 +49,7 @@ const BoardHal kBoard {
 const DisplayHal kDisplay {
     .begin        = [] {
         M5.Display.setBrightness(DEFAULT_BRIGHTNESS);
-        M5.Display.setRotation(ROTATION_LANDSCAPE);
+        M5.Display.setRotation(ROTATION_PORTRAIT);
         M5.Display.setTextSize(DEFAULT_TEXT_SIZE);
         M5.Display.setTextDatum(TL_DATUM);
     },

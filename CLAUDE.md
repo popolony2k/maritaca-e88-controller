@@ -480,7 +480,8 @@ independent of this accumulator.
 ## bt-host-headless — Bluepad32 BT Gamepad Build (M5StickC Plus2, branch `support-bluepad32-8bitdo`)
 
 **Working, confirmed flying both drones with a real 8BitDo Zero 2 (2026-06-27).**
-**Display/HUD/battery now also working (2026-06-29)** — see "Display support" below.
+**Display/HUD/battery, AccelControl/tilt mode, physical BtnA gestures, and PNG logo
+all working (2026-06-29/30)** — see subsections below.
 
 A **separate, parallel firmware build** living at `bt-host-headless/` (repo root,
 sibling to `src/`) — not an environment within the main `platformio.ini`/`src/`
@@ -488,11 +489,9 @@ project, and not flashed alongside the main firmware. It gives the M5StickC Plus
 (whose ESP32-PICO-V3-02 has a genuine dual-mode BLE+BR/EDR radio, unlike the
 AtomS3's BLE-only ESP32-S3) the ability to read 8BitDo/Switch-mode controllers via
 **Bluepad32** and fly the drone — something structurally impossible on the AtomS3
-(see the 8BitDo Switch-mode section above). First proved minimally ("can BT control
-the drone") with no display at all; display/battery have since been added the same
-way (M5Unified/M5GFX as vendored ESP-IDF components). Still no AccelControl/tilt
-mode, no mode-select screen, no physical-button gestures — this build is
-permanently `BluetoothControl`.
+(see the 8BitDo Switch-mode section above). Now has full feature parity with the
+main firmware's BT gamepad mode, including AccelControl/tilt, mode-select screen,
+and physical BtnA button gestures.
 
 ### Why a separate build, not a mode in the main firmware
 
@@ -517,7 +516,7 @@ New, build-specific files:
 | File | Role |
 | --- | --- |
 | `bt-host-headless/main/bp32_gamepad.h/.cpp` | `Bp32Gamepad` — mirrors `BleGamepad`'s shape (`begin()`/`update()`/`axes()`), wraps Bluepad32's `ControllerPtr` into the same `GamepadAxes` struct |
-| `bt-host-headless/main/sketch.cpp` | `setup()`/`loop()` — no board-button code (`FlightController` gets a no-op stub `ButtonHal`; only consumed in `AccelControl` mode, never reached here) and no IMU (`ImuData` is a throwaway default-constructed local), but display/battery are wired up — see "Display support" below |
+| `bt-host-headless/main/sketch.cpp` | `setup()`/`loop()` — full feature parity with main firmware's BT mode; mode-select screen at boot; AccelControl wired to real IMU via `kImu`; BtnA gestures via real `kButton`; board-specific throttle rates via `FlightDeps` |
 | `bt-host-headless/main/idf_component.yml` | Fetches `arduino`/`bluepad32` on demand instead of vendoring (see below) |
 | `bt-host-headless/components/{btstack,bluepad32_arduino,cmd_nvs,cmd_system,M5Unified,M5GFX}` | Still vendored — see "Vendored vs. fetched dependencies" |
 
@@ -600,6 +599,46 @@ exactly). Classic stack-overflow-corrupts-adjacent-memory signature: crash site
    power use for more consistent radio access is a trade-off specific to a build
    that's always running BT concurrently, not the main firmware's optional BT
    mode).
+
+### AccelControl/tilt mode, BtnA gestures, and per-board throttle rates (2026-06-30)
+
+AccelControl mode, the 3-second boot mode-select screen, and physical BtnA button
+gestures are all wired up identically to the main firmware (mirroring `main.cpp`)
+with two board-specific additions:
+
+**IMU axis correction — full swap + sign (confirmed on real hardware):**
+The M5StickC Plus2's MPU6886 is physically rotated 90° relative to the AtomS3
+inside the device. After extensive on-hardware testing, the correct mapping
+is a full swap with sign corrections in `kImu.getAccel` inside `m5stickcplus2.cpp`:
+```cpp
+float tmp = *ax;
+*ax = -*ay;   // pitch input uses original ay, negated
+*ay = tmp;    // roll input uses original ax (no extra negation)
+```
+This also happens to produce the preferred ergonomic control orientation for holding
+the device in portrait mode — forward/back tilt drives pitch, left/right tilt drives
+roll, matching the main firmware's AtomS3 feel.
+
+**Per-board AccelControl throttle rates:**
+The AtomS3's tuned rates (0.3f up / 0.10f down, ≈7.5 and 2.5 units/sec at 25 Hz)
+felt too slow on the StickC Plus2's physical button. `FlightDeps` was extended with
+`throttleRateUp`/`throttleRateDown` fields (defaulting to the AtomS3 values via
+`DEFAULT_THROTTLE_RATE_UP/DOWN` named constants in `flight_controller.h`) so each
+board passes its own rates without touching shared `FlightController` code.
+`bt-host-headless` uses `STICKC_THROTTLE_RATE_UP = 1.0f` / `STICKC_THROTTLE_RATE_DOWN = 0.5f`
+(≈3× faster, confirmed better feel on hardware).
+
+**Portrait mode and PNG logo (2026-06-30):**
+The M5StickC Plus2 display in landscape (rotation 1, 240×135) left the screen
+feeling wrong for the preferred hand grip. Switched to portrait (rotation 0, 135×240)
+in `m5stickcplus2.cpp` (`ROTATION_PORTRAIT = 0`). `display.cpp` updated to
+`W = 135` for `BOARD_STICKC_PLUS2` (portrait width, close to AtomS3's 128px, so
+the same HUD layout mostly fits) — the extra 112px height below the HUD is used
+for a PNG logo (`resources/images/popolon.png`, converted to `src/resources/popolon_png.h`
+via a Python script). Drawn via `M5.Display.drawPng()` with explicit scale factors
+(`LOGO_SIZE/POPOLON_PNG_W/H`) on both the BT status screen and the flight HUD full
+redraws only (`_btScreenReady` / `_needsFullRedraw` gates) — zero impact on the
+10 Hz dynamic update ticks or the 100 Hz control loop.
 
 ### Vendored vs. fetched dependencies
 
