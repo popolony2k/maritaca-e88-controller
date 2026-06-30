@@ -100,15 +100,6 @@ public:
     /** @brief Current flight phase. */
     FlightState state() const { return _state; }
 
-    /**
-     * @brief Immediately enter Emergency state from any active flight phase.
-     *
-     * No-op when already Idle. Intended for a dedicated hardware button
-     * (e.g. BtnB on M5StickC Plus2) so an emergency stop does not require
-     * the triple-click gesture.
-     */
-    void triggerEmergency();
-
 private:
     /**
      * @brief Transition to a new flight state.

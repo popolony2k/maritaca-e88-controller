@@ -141,11 +141,10 @@ void setup() {
 void loop() {
     kBoard.update();
 
-    // Right-side button (BtnB) — single press triggers emergency stop from any
-    // active flight state without needing the triple-click gesture on BtnA.
-    if (kButtonReset.wasReleased() && flight != nullptr) {
-        flight->triggerEmergency();
-        Console.println("[Main] BtnB: emergency stop");
+    // Right-side button (BtnB) — single press restarts the firmware.
+    if (kButtonReset.wasReleased()) {
+        Console.println("[Main] BtnB: restarting...");
+        ESP.restart();
     }
 
     wifi.update();
