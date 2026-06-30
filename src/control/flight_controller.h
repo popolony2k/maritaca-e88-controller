@@ -39,12 +39,19 @@ enum class FlightState {
 /** @brief Return the display name of a FlightState (e.g. "FLYING"). */
 const char* flightStateName(FlightState s);
 
+/// Default AccelControl throttle rates — calibrated for the AtomS3 + altitude-hold drones.
+/// Override via FlightDeps for boards where the button feel demands a different rate.
+static constexpr float DEFAULT_THROTTLE_RATE_UP   = 0.3f;  ///< Climb rate (units/frame at 25 Hz).
+static constexpr float DEFAULT_THROTTLE_RATE_DOWN = 0.10f; ///< Descend rate — gentler to avoid hover overshoot on release.
+
 /**
  * @brief External dependencies injected into FlightController at construction.
  */
 struct FlightDeps {
     const ButtonHal&   button; ///< Screen button abstraction.
     DroneProtocolBase& drone;  ///< UDP control protocol driver (any variant).
+    float throttleRateUp   = DEFAULT_THROTTLE_RATE_UP;   ///< AccelControl climb rate (units/frame at 25 Hz).
+    float throttleRateDown = DEFAULT_THROTTLE_RATE_DOWN; ///< AccelControl descend rate (units/frame at 25 Hz).
 };
 
 /**

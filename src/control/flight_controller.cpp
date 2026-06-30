@@ -227,7 +227,7 @@ void FlightController::runState(const ImuData& imu, bool wifiOk) {
                 }
             } else {
                 if (_btnIsHold) {
-                    float delta = _btnHoldIsDown ? -THROTTLE_HOLD_RATE_DOWN : THROTTLE_HOLD_RATE_UP;
+                    float delta = _btnHoldIsDown ? -_deps.throttleRateDown : _deps.throttleRateUp;
                     _accel.adjustThrottle(delta);
                 }
                 _accel.update(imu, cs, _yawModeActive);

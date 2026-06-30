@@ -10,6 +10,7 @@ set(srcs
         "../../src/control/gamepad_controller.cpp"
         "../../src/control/accel_controller.cpp"
         "../../src/control/flight_controller.cpp"
+        "../../src/imu/accelerometer.cpp"
         "../../src/hal/m5stickcplus2.cpp"
         "../../src/ui/display.cpp")
 

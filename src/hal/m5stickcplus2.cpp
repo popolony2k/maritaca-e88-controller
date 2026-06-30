@@ -63,7 +63,19 @@ const DisplayHal kDisplay {
 };
 
 const ImuHal kImu {
-    .getAccel = [](float* ax, float* ay, float* az) -> bool { return M5.Imu.getAccel(ax, ay, az); },
+    // Both X and Y axes are swapped+negated vs the AtomS3: the StickC Plus2
+    // MPU6886 is physically rotated 90° — swapping ax/ay remaps the tilt
+    // gesture that previously drove roll to drive pitch and vice versa,
+    // matching the ergonomic hold orientation the user confirmed on hardware.
+    .getAccel = [](float* ax, float* ay, float* az) -> bool {
+        bool ok = M5.Imu.getAccel(ax, ay, az);
+        if (ok) {
+            float tmp = *ax;
+            *ax = -*ay;   // pitch input now uses original ay (negated)
+            *ay = tmp;    // roll input now uses original ax (sign confirmed on hardware)
+        }
+        return ok;
+    },
     .getGyro  = [](float* gx, float* gy, float* gz) -> bool { return M5.Imu.getGyro(gx, gy, gz); },
 };
 
