@@ -35,6 +35,7 @@ static constexpr uint32_t DISPLAY_INTERVAL_MS    = 100; // 10 Hz
 static constexpr uint32_t BT_STATUS_SCREEN_MS    = 1500;
 static constexpr uint8_t  AXIS_DISPLAY_MIN       =    1;
 static constexpr float    AXIS_DISPLAY_HALF_RANGE = 127.0f;
+static constexpr uint32_t SPLASH_DURATION_MS      = 2000; // logo splash before mode selection
 static constexpr uint32_t MODE_SELECT_MS          = 3000; // 3 s countdown
 static constexpr int      MODE_SELECT_MAX_S       = (int)(MODE_SELECT_MS / 1000);
 
@@ -105,6 +106,8 @@ static void runModeSelection() {
 void setup() {
     kBoard.begin();
     display.begin();
+    display.drawSplash("BLUEPAD32");
+    delay(SPLASH_DURATION_MS);
 
     Console.printf("Firmware: %s\n", BP32.firmwareVersion());
 

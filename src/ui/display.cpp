@@ -111,21 +111,33 @@ void Display::begin() {
     _btScreenReady    = false;
 }
 
-void Display::drawSplash() {
+void Display::drawSplash(const char* label) {
 #if defined(BOARD_STICKC_PLUS2)
-    static constexpr int SPLASH_SIZE = 128;
-    static constexpr int SPLASH_X    = (135 - SPLASH_SIZE) / 2;  // centre in 135px portrait width
-    static constexpr int SPLASH_Y    = (240 - SPLASH_SIZE) / 2;  // centre in 240px portrait height
+    static constexpr int SPLASH_SIZE  = 128;
+    static constexpr int SPLASH_X     = (135 - SPLASH_SIZE) / 2;  // 3 — centred in 135px width
+    static constexpr int SPLASH_Y     = (240 - SPLASH_SIZE) / 2;  // 56 — centred in 240px height
+    static constexpr int SPLASH_LBL_Y =  22;  // centred in the 56px gap above the PNG
+    static constexpr int CHAR_W       =   6;  // approx char width at text size 1 (pixels)
 #else
-    static constexpr int SPLASH_SIZE = W;   // 128 — fills the square 128×128 AtomS3 screen exactly
-    static constexpr int SPLASH_X    = 0;
-    static constexpr int SPLASH_Y    = 0;
+    static constexpr int SPLASH_SIZE  = W;    // 128 — fills the square 128×128 AtomS3 screen exactly
+    static constexpr int SPLASH_X     = 0;
+    static constexpr int SPLASH_Y     = 0;
 #endif
     _hal.fillScreen(Rgb565::Black);
     _hal.drawPng(POPOLON_PNG, POPOLON_PNG_SIZE,
                  SPLASH_X, SPLASH_Y, SPLASH_SIZE, SPLASH_SIZE,
                  (float)SPLASH_SIZE / POPOLON_PNG_W,
                  (float)SPLASH_SIZE / POPOLON_PNG_H);
+#if defined(BOARD_STICKC_PLUS2)
+    if (label && label[0]) {
+        int len  = 0;
+        while (label[len]) len++;
+        int lblX = (W - len * CHAR_W) / 2;
+        if (lblX < 0) lblX = 0;
+        _hal.setTextColor(Rgb565::Cyan, Rgb565::Black);
+        _hal.drawString(label, lblX, SPLASH_LBL_Y);
+    }
+#endif
 }
 
 void Display::markDirty() {

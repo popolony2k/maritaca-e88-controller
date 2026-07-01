@@ -131,7 +131,11 @@ void setup() {
     Serial.println("[Boot] setup start");
 
     display.begin();
+#if defined(BOARD_STICKC_PLUS2)
+    display.drawSplash("BLE MODE");
+#else
     display.drawSplash();
+#endif
     delay(SPLASH_DURATION_MS);
 
     // Scan for known drones before the mode-select screen so the blocking
