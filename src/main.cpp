@@ -74,9 +74,10 @@ static bool     _prevShowBtScreen = false;
 static bool     _screenOff        = false;
 static uint16_t _prevGpBtns       = 0;     // rising-edge tracking for main.cpp button events
 
-static constexpr uint32_t MODE_SELECT_MS     = 3000; ///< Boot menu auto-select timeout (ms).
-static constexpr int      MODE_SELECT_MAX_S  = (int)(MODE_SELECT_MS / 1000); ///< Countdown start value (s).
-static constexpr uint32_t BT_STATUS_SCREEN_MS = 1500; ///< Keep BT status screen up this long after connect, before switching to the HUD.
+static constexpr uint32_t SPLASH_DURATION_MS  =  2000; ///< Logo splash displayed on boot before mode selection.
+static constexpr uint32_t MODE_SELECT_MS      =  3000; ///< Boot menu auto-select timeout (ms).
+static constexpr int      MODE_SELECT_MAX_S   = (int)(MODE_SELECT_MS / 1000); ///< Countdown start value (s).
+static constexpr uint32_t BT_STATUS_SCREEN_MS =  1500; ///< Keep BT status screen up this long after connect, before switching to the HUD.
 static constexpr uint8_t  AXIS_DISPLAY_MIN    =    1;  ///< Idle+BT preview clamp floor — keeps the bar visibly non-empty.
 static constexpr float    AXIS_DISPLAY_HALF_RANGE = 127.0f; ///< Half-range offset from neutral when mapping [-1,1] gamepad axes to display bytes.
 
@@ -130,6 +131,12 @@ void setup() {
     Serial.println("[Boot] setup start");
 
     display.begin();
+#if defined(BOARD_STICKC_PLUS2)
+    display.drawSplash("BLE MODE");
+#else
+    display.drawSplash();
+#endif
+    delay(SPLASH_DURATION_MS);
 
     // Scan for known drones before the mode-select screen so the blocking
     // scan doesn't freeze the countdown UI.
@@ -163,6 +170,12 @@ void setup() {
 
 void loop() {
     kBoard.update();
+#if defined(BOARD_STICKC_PLUS2)
+    if (kButtonReset.wasReleased()) {
+        Serial.println("[Main] BtnB: restarting...");
+        ESP.restart();
+    }
+#endif
     wifi.update();
     imu.update(kImu);
 

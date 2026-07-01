@@ -147,6 +147,15 @@ void FlightController::handleDoubleClick(bool wifiOk) {
                 Serial.println("[Flight] Button ignored — WiFi not connected");
                 return;
             }
+            // BluetoothControl: arming with no gamepad connected would send a
+            // real Unlock+TakeOff to the drone, then get immediately
+            // countermanded by runState()'s "BT lost during flight" emergency
+            // stop on the very next tick — a real arm/disarm blip, not a
+            // no-op. Block it at the source instead.
+            if (_mode == OperationMode::BluetoothControl && !_lastGamepadAxes.connected) {
+                Serial.println("[Flight] Button ignored — gamepad not connected");
+                return;
+            }
             // Drones that don't need CaliGyro/Unlock/TakeOff go straight to Flying.
             enterState(_deps.drone.supportsArmSequence()
                        ? FlightState::Calibrating : FlightState::Flying);
@@ -218,7 +227,7 @@ void FlightController::runState(const ImuData& imu, bool wifiOk) {
                 }
             } else {
                 if (_btnIsHold) {
-                    float delta = _btnHoldIsDown ? -THROTTLE_HOLD_RATE_DOWN : THROTTLE_HOLD_RATE_UP;
+                    float delta = _btnHoldIsDown ? -_deps.throttleRateDown : _deps.throttleRateUp;
                     _accel.adjustThrottle(delta);
                 }
                 _accel.update(imu, cs, _yawModeActive);

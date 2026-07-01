@@ -60,6 +60,9 @@ struct DisplayHal {
     void (*drawRect)     (int x, int y, int w, int h, uint16_t color); ///< Draw a rectangle outline.
     void (*setTextColor) (uint16_t fg, uint16_t bg);                 ///< Set foreground and background text colors.
     void (*drawString)   (const char* s, int x, int y);              ///< Draw a string at pixel coordinates (x, y).
+    void (*drawPng)      (const uint8_t* data, size_t len,
+                          int x, int y, int w, int h,
+                          float scaleX, float scaleY);               ///< Decode and draw a PNG image.
 };
 
 /**

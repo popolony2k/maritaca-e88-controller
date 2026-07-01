@@ -148,6 +148,8 @@ Charging status is **not detectable** on this hardware (`isCharging()` always re
 - LovyanGFX rotation values: 0=0°, 1=90°CW, 2=180°, 3=270°CW — no library constants, use integers.
 - Display is rotated 270° (`ROTATION_270 = 3`), screen is 128×128.
 - Display is a pure renderer — receives values, does not fetch data from sources.
+- `DisplayHal` includes `drawPng(data, len, x, y, w, h, scaleX, scaleY)` — M5Unified PNG decoding is fully behind the HAL. `display.cpp` does **not** include `M5Unified.h`. The PNG header (`src/resources/popolon_png.h`) is always included on all boards.
+- `Display::drawSplash()` fills the screen black then draws the PNG scaled to fit: 128×128 on AtomS3 (fills the square panel), 128×128 centered in the 135×240 portrait panel on StickC Plus2. Called once in `setup()` for `SPLASH_DURATION_MS = 2000` before `runModeSelection()`.
 
 ### M5Unified display quick reference
 
@@ -207,7 +209,7 @@ maritaca-e88-controller/
 
 ---
 
-## Current Implementation Status (2026-06-17)
+## Current Implementation Status (2026-07-02)
 
 ### Working
 
@@ -227,6 +229,8 @@ maritaca-e88-controller/
 - **Both drones confirmed to run altitude-hold firmware** (2026-06-11): `0x80` throttle = hold current altitude, deviation = continuous climb/descend rate. Throttle-hold gestures (ACCEL screen-button hold and BT-gamepad left stick/ZL/ZR) now snap back to `0x80` the instant the gesture ends, instead of leaving the drone climbing/descending indefinitely. See Throttle sections below.
 - **FLOW-WIFI Idle session maintenance** (2026-06-16): In Idle, `FlowWifiProtocol::update()` sends a slow 8800 heartbeat (every 2 s) with `throttle=0x00, cmd=0x00` so the drone knows a controller is connected; without this the drone ignores the first TakeOff command. Also sends the secondary keepalive `[0x01, 0x01]` to port 7099 at 1 Hz (matches KY UFO app behaviour). `setIdle()` uses `throttle=0x00` (not `0x80`) to prevent altitude-hold re-arm while the drone is grounded and disarmed.
 - **ACCEL mode yaw redesigned as single-click toggle + tilt** (2026-06-17): replaces the old gyro-rate-based yaw (hard to control reliably). See Yaw section under Accel Controller Tuning Parameters below.
+- **bt-host fully tuned and hardware-confirmed on M5StickC Plus2 (2026-07-01)**: BtnB (right-side button) triggers `ESP.restart()` as a one-press firmware restart; `YAW_SLEW_RATE` reduced 5% (5.0 → 4.75) for calmer yaw; `SLEW_RATE` overridden to 6.0 for `BOARD_STICKC_PLUS2` via preprocessor conditional (AtomS3 stays at 3.0) — compensates for lower effective loop rate under BT+WiFi coexistence. All AccelControl axes confirmed on real hardware.
+- **Boot splash screen (2026-07-02)**: `popolon.png` displayed full-screen for 2 s at every boot, before the SELECT MODE menu. AtomS3: 128×128 fills the square screen entirely. StickC Plus2: 128×128 centered in the 135×240 portrait panel. `DisplayHal::drawPng()` added — PNG decoding is now fully behind the HAL; `display.cpp` no longer includes `M5Unified.h` directly. `FlightDeps` gained an explicit constructor (C++11 aggregate restriction — default member initializers make a struct non-aggregate in C++11, breaking brace-init; constructor with defaults preserves all existing call sites).
 
 ### Open Issues
 
@@ -266,8 +270,10 @@ static constexpr float PITCH_DEAD_ZONE = 10.0f;
 static constexpr float PITCH_EXPO      =  0.5f;
 
 // Slew rate limiter
-static constexpr float SLEW_RATE       =  3.0f;  // units/frame at 25 Hz, roll/pitch
-static constexpr float YAW_SLEW_RATE   =  5.0f;  // units/frame at 25 Hz, yaw mode — snappier
+// BOARD_STICKC_PLUS2 overrides SLEW_RATE to 6.0 via preprocessor conditional
+// (BT+WiFi coexistence halves the effective loop rate vs AtomS3's clean 25 Hz)
+static constexpr float SLEW_RATE       =  3.0f;  // units/frame at 25 Hz, roll/pitch (AtomS3); 6.0 on StickC Plus2
+static constexpr float YAW_SLEW_RATE   =  4.75f; // units/frame at 25 Hz, yaw mode — snappier but calmer than roll/pitch
 static constexpr float YAW_DEAD_ZONE   =  7.0f;  // degrees, yaw mode — smaller than TILT_DEAD_ZONE
 
 // Throttle (neutral/hover)
@@ -294,10 +300,11 @@ While ON, the same left/right tilt that normally drives roll is routed to **yaw*
 roll is suppressed to neutral (`0x80`) for the duration. Pitch and throttle are unaffected
 and still work normally at the same time. Click again to switch back to roll.
 
-Yaw mode uses its own tuning (`YAW_DEAD_ZONE = 7.0f`, `YAW_SLEW_RATE = 5.0f`) — a smaller
+Yaw mode uses its own tuning (`YAW_DEAD_ZONE = 7.0f`, `YAW_SLEW_RATE = 4.75f`) — a smaller
 dead zone and faster slew than plain roll (`TILT_DEAD_ZONE = 10.0f`, `SLEW_RATE = 3.0f`),
 since yaw is a deliberate momentary gesture rather than sustained tilt and benefits from a
-snappier feel. Implemented in `AccelController::update(imu, out, yawModeActive)` —
+snappier feel. `YAW_SLEW_RATE` was reduced 5% (5.0 → 4.75, 2026-07-01) after hardware
+testing confirmed calmer yaw response on both boards. Implemented in `AccelController::update(imu, out, yawModeActive)` —
 `_currentRoll`'s slewed value is directly reused as the yaw output when active, no separate
 yaw filter state.
 
@@ -427,6 +434,8 @@ First 200 raw reports are dumped to Serial (`[BLE] report[N] len=N: XX XX …`) 
 
 **Axis mapping:** Left stick X → roll, left stick Y → pitch (inverted), right stick X → yaw. ZR = throttle up, ZL = throttle down. Throttle is rate-based — hold ZR to climb, hold ZL to descend, release both to hold altitude.
 
+**Update (2026-06-27): this hardware ceiling is now bypassed, on a different board.** The M5StickC Plus2's chip has the BR/EDR radio the AtomS3 lacks. See `bt-host` below — Switch-mode 8BitDo controllers (the exact Zero 2 from the investigation above) now work, just not on the AtomS3 and not via this `BleGamepad`/BLE code path.
+
 ### GamepadController tuning parameters
 
 Roll/pitch/yaw tuning is **per-drone** via the `GamepadConfig` struct returned by
@@ -472,6 +481,262 @@ holding the accumulated value — the drone's altitude hold then maintains the n
 altitude. For Dr.One, `FlightController::runState()` additionally overrides
 `cs.throttle` directly from the current trigger state (`0x80 + rate * 0x7F`),
 independent of this accumulator.
+
+---
+
+## bt-host — Bluepad32 BT Gamepad Build (M5StickC Plus2, branch `support-bluepad32-8bitdo`)
+
+**Working, confirmed flying both drones with a real 8BitDo Zero 2 (2026-06-27).**
+**Display/HUD/battery, AccelControl/tilt mode, physical BtnA gestures, and PNG logo
+all working (2026-06-29/30). All AccelControl tuning confirmed on real hardware and
+BtnB restart wired (2026-07-01)** — see subsections below.
+
+A **separate, parallel firmware build** living at `bt-host/` (repo root,
+sibling to `src/`) — not an environment within the main `platformio.ini`/`src/`
+project, and not flashed alongside the main firmware. It gives the M5StickC Plus2
+(whose ESP32-PICO-V3-02 has a genuine dual-mode BLE+BR/EDR radio, unlike the
+AtomS3's BLE-only ESP32-S3) the ability to read 8BitDo/Switch-mode controllers via
+**Bluepad32** and fly the drone — something structurally impossible on the AtomS3
+(see the 8BitDo Switch-mode section above). Now has full feature parity with the
+main firmware's BT gamepad mode, including AccelControl/tilt, mode-select screen,
+and physical BtnA button gestures.
+
+### Why a separate build, not a mode in the main firmware
+
+Bluepad32 requires `framework = espidf` (ESP-IDF native, component-based `main/`
+project layout), not `framework = arduino` (the main firmware's Arduino-sketch
+`src/` layout) — PlatformIO's `src_filter` doesn't work under ESP-IDF, and the two
+frameworks expect incompatible source layouts. So this is flashed **instead of**
+the main firmware on the same physical board, not a runtime mode switch.
+
+### Architecture: shares the main firmware's logic, doesn't duplicate it
+
+`bt-host/main/CMakeLists.txt` lists `src/comm/{wifi_manager,
+drone_protocol,flow_wifi_protocol}.cpp` and `src/control/{gamepad_controller,
+accel_controller,flight_controller}.cpp` **directly via relative path**
+(`../../src/...`), with `../../src` added to `INCLUDE_DIRS` — one copy of the
+protocol/control logic, shared by both builds. Works because that code only needs
+`millis()`/`WiFiUdp`/`IPAddress`/`Serial` (present via the `arduino-esp32` core,
+included as an ESP-IDF component regardless of framework).
+
+New, build-specific files:
+
+| File | Role |
+| --- | --- |
+| `bt-host/main/bp32_gamepad.h/.cpp` | `Bp32Gamepad` — mirrors `BleGamepad`'s shape (`begin()`/`update()`/`axes()`), wraps Bluepad32's `ControllerPtr` into the same `GamepadAxes` struct |
+| `bt-host/main/sketch.cpp` | `setup()`/`loop()` — full feature parity with main firmware's BT mode; mode-select screen at boot; AccelControl wired to real IMU via `kImu`; BtnA gestures via real `kButton`; board-specific throttle rates via `FlightDeps` |
+| `bt-host/main/idf_component.yml` | Fetches `arduino`/`bluepad32` on demand instead of vendoring (see below) |
+| `bt-host/components/{btstack,bluepad32_arduino,cmd_nvs,cmd_system,M5Unified,M5GFX}` | Still vendored — see "Vendored vs. fetched dependencies" |
+
+**Axis mapping** (`Bp32Gamepad::update()`) — matches the iPega convention exactly
+(confirmed correct by the user after an initial backwards mapping felt wrong on
+hardware): left stick X → yaw, left stick Y → throttle up/down (0.08 deadband,
+matches `IPEGA_THROTTLE_DEADBAND`); right stick X/Y → roll/pitch. A/B/X/Y map
+straight to `GamepadBtn`; D-pad from Bluepad32's `dpad()` bitmask; LT/R1
+approximated from L1/R1 shoulder buttons (untested on real hardware — only
+A/B/X/Y and axes confirmed so far).
+
+### Display support (M5Unified/M5GFX, added 2026-06-29)
+
+**M5Unified and M5GFX both ship as real ESP-IDF components**, not just
+Arduino-framework libraries — their own upstream `CMakeLists.txt` declares plain
+ESP-IDF `COMPONENT_REQUIRES` and even has a ready-made, commented-out line for
+exactly this situation:
+
+```cmake
+### If you use arduino-esp32 components, please activate next comment line.
+# list(APPEND COMPONENT_REQUIRES arduino-esp32)
+```
+
+That line hardcodes the component name `arduino-esp32`, but this project fetches
+the Arduino core under the name `arduino` (matching the upstream Bluepad32
+template's convention). Vendored `components/M5Unified` and `components/M5GFX`
+(cloned at tags `0.2.17`/`0.2.24` to match the main firmware's `lib_deps`) have
+that line changed to `list(APPEND COMPONENT_REQUIRES arduino)` instead — not a
+deeper incompatibility, just a naming mismatch between two upstream conventions.
+M5Unified's `CMakeLists.txt` also auto-detects a sibling `components/M5GFX`
+checkout by that exact capitalized name to decide its own dependency name, so the
+vendored folder names matter.
+
+`src/hal/m5stickcplus2.h/.cpp` and `src/ui/display.h/.cpp` are reused **unchanged**
+via the same relative-path pattern as the comm/control sources — no new HAL or
+display code was needed. `sketch.cpp`'s `loop()` replicates `main.cpp`'s BT-mode
+display flow (the `showBtScreen` transition logic, `markDirty()`/`sleep()`/
+`wake()`, the Idle+BT axis preview) almost verbatim, mapping `Bp32Status`'s two
+states onto the two `BleStatus` values `drawBtStatus()` actually uses (Bluepad32
+has no separate "connecting" phase the way the BLE scan/connect callbacks did).
+
+**CJK font data (efont/IPA, ~118MB of vendored *source*) was initially excluded**
+on the assumption it would bloat the firmware — turned out to be the wrong call.
+`lgfx_fonts.cpp` `#include`s those headers unconditionally with no opt-out macro,
+so excluding them is a compile error, not just dead code. Restored them and
+measured instead: M5Unified+M5GFX (fonts included) added only **~210KB** to the
+compiled firmware (1.34MB → 1.55MB) — verbose C array literal source compiles down
+to much more compact binary data than its on-disk text size suggests. Don't assume
+source size predicts binary size; measure first.
+
+**Real bug found: WiFi/system event-loop task stack overflow.** Adding
+M5Unified/M5GFX (more code, deeper call chains) pushed the event-loop task's
+default 2304-byte stack (`CONFIG_ESP_SYSTEM_EVENT_TASK_STACK_SIZE`) over the edge —
+crashed and rebooted with `assert failed: spinlock_acquire ... (lock->count == 0)`
+inside `esp_event_loop_run`, every time, right as the "got IP" WiFi event fired
+(decoded via `xtensa-esp32-elf-addr2line` against the build's own `firmware.elf` —
+don't guess at a crash site from a raw backtrace when the toolchain can decode it
+exactly). Classic stack-overflow-corrupts-adjacent-memory signature: crash site
+(deep in FreeRTOS/event-loop internals) had nothing to do with the actual cause
+(more stack pressure from unrelated new code elsewhere). Fixed by doubling it in
+`sdkconfig.defaults`: `CONFIG_ESP_SYSTEM_EVENT_TASK_STACK_SIZE=4096`.
+
+### Two coexistence bugs found and fixed (both apply to any future BT+WiFi work)
+
+1. **WiFi reconnect race.** `WifiManager::update()`'s fixed 5 s retry (tuned for
+   the AtomS3, no concurrent BT, connects in 1-2 s) fired *while* the first
+   connection attempt was still resolving once BT coexistence stretched initial
+   WiFi association to 10-25+ s — visible as repeated `STA connect failed!
+   0x3007: ESP_ERR_WIFI_CONN`. Fixed with a new, backward-compatible
+   `WifiManager::setReconnectInterval(uint32_t ms)` setter in
+   `src/comm/wifi_manager.h/.cpp` (default unchanged at 5000 ms — the main
+   firmware's behavior is identical either way); `bt-host` calls
+   `wifi.setReconnectInterval(30000)` before `begin()`.
+2. **UDP sends silently failing even with WiFi shown connected**
+   (`endPacket(): could not send data: 12`, roughly every ~800ms matching the Idle
+   keepalive cadence) — WiFi modem sleep periodically cedes the radio to BT for
+   coexistence, and a send mid-cede fails outright. Fixed with
+   `WiFi.setSleep(false)` right after `wifi.begin()` in
+   `bt-host/main/sketch.cpp` only (not the shared `WifiManager` — more
+   power use for more consistent radio access is a trade-off specific to a build
+   that's always running BT concurrently, not the main firmware's optional BT
+   mode).
+
+### AccelControl/tilt mode, BtnA gestures, per-board tuning, and BtnB restart (2026-06-30/07-01)
+
+AccelControl mode, the 3-second boot mode-select screen, and physical BtnA button
+gestures are all wired up identically to the main firmware (mirroring `main.cpp`)
+with two board-specific additions:
+
+**IMU axis correction — full swap + sign (confirmed on real hardware):**
+The M5StickC Plus2's MPU6886 is physically rotated 90° relative to the AtomS3
+inside the device. After extensive on-hardware testing, the correct mapping
+is a full swap with sign corrections in `kImu.getAccel` inside `m5stickcplus2.cpp`:
+```cpp
+float tmp = *ax;
+*ax = -*ay;   // pitch input uses original ay, negated
+*ay = tmp;    // roll input uses original ax (no extra negation)
+```
+This also happens to produce the preferred ergonomic control orientation for holding
+the device in portrait mode — forward/back tilt drives pitch, left/right tilt drives
+roll, matching the main firmware's AtomS3 feel.
+
+**Per-board AccelControl throttle rates:**
+The AtomS3's tuned rates (0.3f up / 0.10f down, ≈7.5 and 2.5 units/sec at 25 Hz)
+felt too slow on the StickC Plus2's physical button. `FlightDeps` was extended with
+`throttleRateUp`/`throttleRateDown` fields (defaulting to the AtomS3 values via
+`DEFAULT_THROTTLE_RATE_UP/DOWN` named constants in `flight_controller.h`) so each
+board passes its own rates without touching shared `FlightController` code.
+`bt-host` uses `STICKC_THROTTLE_RATE_UP = 1.0f` / `STICKC_THROTTLE_RATE_DOWN = 0.5f`
+(≈3× faster, confirmed better feel on hardware).
+
+**BtnB (right-side button) — firmware restart (2026-07-01):**
+`kButtonReset` HAL (`src/hal/m5stickcplus2.h/.cpp`) maps `M5.BtnB` to a `ButtonHal`
+instance. A single release triggers `ESP.restart()` in `sketch.cpp`. Emergency stop
+remains triple-click on BtnA as before — BtnB is purely a soft reset for quick
+firmware restarts without needing the power button.
+
+**Per-board AccelControl SLEW_RATE override (2026-07-01):**
+Bluepad32 + WiFi coexistence reduces the bt-host loop's effective frame rate to roughly
+half the AtomS3's clean 25 Hz, making `SLEW_RATE = 3.0f` feel sluggish on roll/pitch.
+`accel_controller.h` uses a `#if defined(BOARD_STICKC_PLUS2)` conditional to set
+`SLEW_RATE = 6.0f` for this build only (AtomS3 unchanged at 3.0). Confirmed correct
+feel on hardware after testing at 4.5 (still slow) → 6.0 (matches AtomS3 feel).
+`YAW_SLEW_RATE` is **not** board-specific — shared value reduced to 4.75 (–5%) for
+both boards after hardware testing.
+
+**Portrait mode and PNG logo (2026-06-30):**
+The M5StickC Plus2 display in landscape (rotation 1, 240×135) left the screen
+feeling wrong for the preferred hand grip. Switched to portrait (rotation 0, 135×240)
+in `m5stickcplus2.cpp` (`ROTATION_PORTRAIT = 0`). `display.cpp` updated to
+`W = 135` for `BOARD_STICKC_PLUS2` (portrait width, close to AtomS3's 128px, so
+the same HUD layout mostly fits) — the extra 112px height below the HUD is used
+for a PNG logo (`resources/images/popolon.png`, converted to `src/resources/popolon_png.h`
+via a Python script). Drawn via `M5.Display.drawPng()` with explicit scale factors
+(`LOGO_SIZE/POPOLON_PNG_W/H`) on both the BT status screen and the flight HUD full
+redraws only (`_btScreenReady` / `_needsFullRedraw` gates) — zero impact on the
+10 Hz dynamic update ticks or the 100 Hz control loop.
+
+### Vendored vs. fetched dependencies
+
+`bt-host/main/idf_component.yml` declares `arduino`
+(`espressif/arduino-esp32`, pinned to commit `ac961f671abd5ae1da0a15fd4bee71ed807c2cf3`)
+and `bluepad32` (`gitlab.com/ricardoquesada/bluepad32` — **the real canonical
+repo; GitHub's `ricardoquesada/bluepad32` is a stale mirror, last tagged
+`release_v3.10.3`** — tag `4.2.0`, `path: src/components/bluepad32`) as git
+dependencies, fetched into the gitignored `managed_components/` instead of
+vendored. **`btstack` could not be externalized this way** — the vendored copy has
+ESP32 port files (`CMakeLists.txt`, `Kconfig`, `btstack_port_esp32*.c`) that don't
+exist in raw `bluekitchen/btstack`; it's template-specific wrapper code, stays
+vendored (13MB). `bluepad32_arduino` (104KB) has no independent upstream either,
+also stays vendored. This cut the repo's vendored footprint from ~79MB to ~14MB.
+`M5Unified`/`M5GFX` (added later for display support, ~12MB combined) are also
+vendored rather than fetched — both need the same one-line `arduino-esp32` →
+`arduino` patch (see "Display support" above), which a registry fetch can't apply.
+
+**Gotcha:** ESP-IDF's component manager does a bare-repo mirror clone into
+`~/Library/Caches/Espressif/ComponentManager/` (a fixed user-level cache, **not**
+scoped by `PLATFORMIO_CORE_DIR`). On a machine with Git 2.38+'s
+`safe.bareRepository=explicit` default this fails outright. Fix it *without*
+touching global git config — scope it to just the build command:
+`GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=safe.bareRepository GIT_CONFIG_VALUE_0=all`.
+If a retry then fails with `git config --get remote.origin.url`, that's stale
+half-initialized state from the earlier failure — clear
+`~/Library/Caches/Espressif/ComponentManager/` and try again.
+
+### Build & flash
+
+```bash
+cd bt-host
+
+# Build only
+PLATFORMIO_CORE_DIR="$(pwd)/.piocore" \
+  GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=safe.bareRepository GIT_CONFIG_VALUE_0=all \
+  pio run
+
+# Build + flash (works for normal code updates once dependencies are cached)
+PLATFORMIO_CORE_DIR="$(pwd)/.piocore" \
+  GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=safe.bareRepository GIT_CONFIG_VALUE_0=all \
+  pio run -t upload
+```
+
+**Always use an isolated `PLATFORMIO_CORE_DIR`** — the pioarduino-forked platform
+package this build needs shares the name `"espressif32"` with the official
+platform the main firmware uses; installing it into the default `~/.platformio/`
+cache silently overwrites the main firmware's platform and breaks its build (this
+happened once — fixed via `pio platform uninstall espressif32 && pio platform
+install espressif32@7.0.1`. Verify the main firmware's AtomS3 *and* StickC Plus2
+environments still build after any global-cache-adjacent operation).
+
+`pio run -t upload` handles the full flash (bootloader + partitions + app) correctly
+for this build. `pio device monitor` fails in a sandboxed/non-TTY shell
+(`termios.error: Operation not supported by device`) — read the serial port
+directly with a small pyserial script instead, explicitly setting
+`dtr=False; rts=False` before reading (the USB-serial adapter's auto-reset wiring
+otherwise holds the chip in reset/bootloader mode while the port is open).
+
+### Other ESP-IDF-native build quirks hit along the way
+
+- Platform's pinned `tool-esptoolpy` (`v5.0.0-dev1`) has a packaging bug —
+  override via `platform_packages` to `v5.3.0`.
+- `board_build.embed_txtfiles` needed for transitively-pulled `esp_insights`/
+  `esp_rainmaker` cert files (a dependency of the `arduino` component, unrelated
+  to Bluepad32 itself).
+- Combining WiFi + Bluepad32/BTstack overflows IRAM by ~11KB — fix is
+  `CONFIG_ESP_WIFI_IRAM_OPT=n` / `CONFIG_ESP_WIFI_RX_IRAM_OPT=n` in
+  `sdkconfig.defaults` (ESP-IDF 5.4 dropped the `CONFIG_ESP32_*` prefix these used
+  to have — the old name silently no-ops).
+- Default 1MB partition is too small once WiFi is added (~1.3MB firmware) — needed
+  both `CONFIG_PARTITION_TABLE_CUSTOM_FILENAME` *and* PlatformIO's
+  `board_build.partitions = partitions.csv`, plus a full `pio run -t clean`
+  rebuild (CMake doesn't notice a `partitions.csv` added after the first
+  configure pass).
 
 ---
 

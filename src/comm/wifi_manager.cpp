@@ -52,7 +52,7 @@ void WifiManager::update() {
     if (WiFi.status() == WL_CONNECTED) return;
 
     uint32_t now = millis();
-    if (now - _lastReconnectMs < RECONNECT_INTERVAL_MS) return;
+    if (now - _lastReconnectMs < _reconnectIntervalMs) return;
     _lastReconnectMs = now;
 
     Serial.printf("[WiFi] Reconnecting to %s\n", _ssid);

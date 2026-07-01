@@ -31,11 +31,10 @@
  */
 
 /// LovyanGFX rotation constants (0=0°, 1=90°CW, 2=180°, 3=270°CW).
-/// Native panel is 135(w)x240(h) portrait at rotation 0; rotation 1 gives a
-/// 240x135 landscape framebuffer to match this project's HUD orientation.
-/// TODO: confirm on physical hardware which rotation reads "upright" given
-/// how the unit will actually be held — flagged in the porting plan.
-static constexpr uint8_t ROTATION_LANDSCAPE = 1;
+/// Native panel is 135(w)x240(h) portrait at rotation 0.
+/// Rotation 0 = portrait (135×240), 90°CCW from previous landscape orientation —
+/// confirmed preferred ergonomic hold on real hardware.
+static constexpr uint8_t ROTATION_PORTRAIT = 0;
 
 static constexpr uint8_t DEFAULT_BRIGHTNESS = 128; ///< Initial backlight level on begin().
 static constexpr uint8_t DEFAULT_TEXT_SIZE  =   1;  ///< Normal (1x) text scale.
@@ -50,7 +49,7 @@ const BoardHal kBoard {
 const DisplayHal kDisplay {
     .begin        = [] {
         M5.Display.setBrightness(DEFAULT_BRIGHTNESS);
-        M5.Display.setRotation(ROTATION_LANDSCAPE);
+        M5.Display.setRotation(ROTATION_PORTRAIT);
         M5.Display.setTextSize(DEFAULT_TEXT_SIZE);
         M5.Display.setTextDatum(TL_DATUM);
     },
@@ -60,19 +59,37 @@ const DisplayHal kDisplay {
     .drawRect     = [](int x, int y, int w, int h, uint16_t c) { M5.Display.drawRect(x, y, w, h, c); },
     .setTextColor = [](uint16_t fg, uint16_t bg)               { M5.Display.setTextColor(fg, bg); },
     .drawString   = [](const char* s, int x, int y)            { M5.Display.drawString(s, x, y); },
+    .drawPng      = [](const uint8_t* d, size_t len, int x, int y, int w, int h, float sx, float sy) {
+                        M5.Display.drawPng(d, len, x, y, w, h, 0, 0, sx, sy); },
 };
 
 const ImuHal kImu {
-    .getAccel = [](float* ax, float* ay, float* az) -> bool { return M5.Imu.getAccel(ax, ay, az); },
+    // Both X and Y axes are swapped+negated vs the AtomS3: the StickC Plus2
+    // MPU6886 is physically rotated 90° — swapping ax/ay remaps the tilt
+    // gesture that previously drove roll to drive pitch and vice versa,
+    // matching the ergonomic hold orientation the user confirmed on hardware.
+    .getAccel = [](float* ax, float* ay, float* az) -> bool {
+        bool ok = M5.Imu.getAccel(ax, ay, az);
+        if (ok) {
+            float tmp = *ax;
+            *ax = -*ay;   // pitch input now uses original ay (negated)
+            *ay = tmp;    // roll input now uses original ax (sign confirmed on hardware)
+        }
+        return ok;
+    },
     .getGyro  = [](float* gx, float* gy, float* gz) -> bool { return M5.Imu.getGyro(gx, gy, gz); },
 };
 
-// BtnB (side button) is intentionally unused — this first port keeps the
-// existing single-button gesture scheme identical to the AtomS3. Wiring
-// BtnB in as a dedicated control is a deliberate follow-up, not part of
-// keeping behavior unchanged during the initial port.
 const ButtonHal kButton {
     .wasPressed  = []()            -> bool { return M5.BtnA.wasPressed(); },
     .wasReleased = []()            -> bool { return M5.BtnA.wasReleased(); },
     .pressedFor  = [](uint32_t ms) -> bool { return (bool)M5.BtnA.pressedFor(ms); },
+};
+
+// BtnB (right side button) — wired as a dedicated emergency stop so a single
+// press can cut motors without requiring the triple-click gesture on BtnA.
+const ButtonHal kButtonReset {
+    .wasPressed  = []()            -> bool { return M5.BtnB.wasPressed(); },
+    .wasReleased = []()            -> bool { return M5.BtnB.wasReleased(); },
+    .pressedFor  = [](uint32_t ms) -> bool { return (bool)M5.BtnB.pressedFor(ms); },
 };

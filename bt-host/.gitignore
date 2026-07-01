@@ -1,0 +1,7 @@
+.piocore/
+.pio/
+build/
+managed_components/
+sdkconfig
+sdkconfig.*
+!sdkconfig.defaults

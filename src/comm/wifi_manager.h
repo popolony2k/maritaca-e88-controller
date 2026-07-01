@@ -54,10 +54,23 @@ public:
     /** @brief Current IP address as a string, or "0.0.0.0" when not connected. */
     String localIP() const;
 
+    /**
+     * @brief Override the retry period between reconnect attempts.
+     *
+     * Default (5000 ms) assumes WiFi alone, with no radio contention — fine
+     * on the AtomS3/StickC main firmware. Builds that also run a concurrent
+     * Bluetooth stack (e.g. bt-host-headless's Bluepad32) can see initial
+     * WiFi association take 10-25+ s due to coexistence arbitration; with
+     * the 5 s default, update() would call WiFi.begin() again while the
+     * first attempt is still resolving, aborting it (visible as repeated
+     * "sta is connecting, return error"). Call this before begin() to widen
+     * the interval in that scenario.
+     */
+    void setReconnectInterval(uint32_t ms) { _reconnectIntervalMs = ms; }
+
 private:
     const char* _ssid     = nullptr;
     const char* _password = nullptr;
     uint32_t    _lastReconnectMs = 0;
-
-    static constexpr uint32_t RECONNECT_INTERVAL_MS = 5000; ///< Retry period.
+    uint32_t    _reconnectIntervalMs = 5000; ///< Retry period — see setReconnectInterval().
 };

@@ -1,0 +1,93 @@
+#
+# ESP32 options
+#
+# Re-enable OPTIMIZATION_PERF when these bugs are fixed:
+# https://github.com/espressif/arduino-esp32/issues/9784
+# https://github.com/espressif/arduino-esp32/issues/9607
+#CONFIG_COMPILER_OPTIMIZATION_PERF=y
+
+CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
+
+CONFIG_ESP32_XTAL_FREQ_AUTO=y
+# Adding WiFi pushed firmware past the default single-app partition's 1MB
+# limit (~1.3MB). Custom table gives a 3MB app partition instead.
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+
+# Adding M5GFX/M5Unified pushed the WiFi/system event-loop task's default
+# 2304-byte stack over the edge — crashed with "assert failed: spinlock_acquire
+# (lock->count == 0)" inside esp_event_loop_run, right as the "got IP" event
+# fired (classic stack-overflow-corrupts-adjacent-spinlock signature). Doubling
+# it gives headroom for the deeper call chains now running through this task.
+CONFIG_ESP_SYSTEM_EVENT_TASK_STACK_SIZE=4096
+
+# Adding WiFi alongside Bluepad32/BTstack overflows IRAM by ~11KB. Move
+# WiFi's performance-critical code from IRAM to flash to make room — this
+# prototype doesn't need WiFi's IRAM-resident speed, just coexistence.
+# (ESP-IDF 5.4 renamed these from the CONFIG_ESP32_* form.)
+CONFIG_ESP_WIFI_IRAM_OPT=n
+CONFIG_ESP_WIFI_RX_IRAM_OPT=n
+
+# Bluetooh related
+CONFIG_BT_ENABLED=y
+CONFIG_BT_CONTROLLER_ONLY=y
+# Enable Dualmode (BLE and BR/EDR)
+CONFIG_BTDM_CTRL_MODE_BTDM=y
+#CONFIG_BTDM_CTRL_MODE_BR_EDR_ONLY=y
+# Should be, at least, one more than CONFIG_BLUEPAD32_MAX_DEVICES
+# See: https://gitlab.com/ricardoquesada/bluepad32/-/issues/11
+CONFIG_BTDM_CTRL_BR_EDR_MAX_ACL_CONN=5
+CONFIG_BTDM_CTRL_BLE_MAX_CONN=5
+CONFIG_BTDM_CTRL_BR_EDR_MAX_SYNC_CONN=0
+CONFIG_BTDM_CTRL_AUTO_LATENCY=y
+CONFIG_BTDM_CTRL_MODEM_SLEEP=n
+
+CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH=y
+
+# MBEDTLS
+CONFIG_MBEDTLS_PSK_MODES=y
+CONFIG_MBEDTLS_KEY_EXCHANGE_PSK=y
+CONFIG_MBEDTLS_KEY_EXCHANGE_DHE_PSK=y
+CONFIG_MBEDTLS_KEY_EXCHANGE_ECDHE_PSK=y
+CONFIG_MBEDTLS_KEY_EXCHANGE_RSA_PSK=y
+
+#
+# FreeRTOS
+#
+# Enable FreeRTOS stats formatting functions, needed for 'tasks' console command
+CONFIG_FREERTOS_USE_TRACE_FACILITY=y
+CONFIG_FREERTOS_USE_STATS_FORMATTING_FUNCTIONS=y
+# Needed for ArduinoCore v2.0.5
+CONFIG_FREERTOS_HZ=1000
+
+#
+# Bluepad32 Options
+#
+CONFIG_BLUEPAD32_PLATFORM_CUSTOM=y
+CONFIG_BLUEPAD32_MAX_DEVICES=4
+# Arduino Serial conflicts with the console
+# To disable replace "y" with "n"
+CONFIG_BLUEPAD32_USB_CONSOLE_ENABLE=y
+# Brings too many issues with Arduino users. Disable it by default.
+# Can be enabled via API.
+CONFIG_BLUEPAD32_ENABLE_VIRTUAL_DEVICE_BY_DEFAULT=n
+
+#
+# Arduino Options
+#
+CONFIG_AUTOSTART_ARDUINO=n
+CONFIG_ARDUINO_SELECTIVE_COMPILATION=y
+CONFIG_ARDUINO_SELECTIVE_BLE=n
+CONFIG_ARDUINO_SELECTIVE_BluetoothSerial=n
+# Complains about missing ESP-SR header when compiling on esp32-s3. Temporary disabled
+CONFIG_ARDUINO_SELECTIVE_ESP_SR=n
+# Cannot disable SimpleBLE since it is included from WiFiProv.cpp
+#CONFIG_ARDUINO_SELECTIVE_SimpleBLE=n
+
+#
+# BTstack
+#
+# Needs to be disabled for ESP32-C6
+# See: https://github.com/bluekitchen/btstack/issues/599
+#
+CONFIG_BTSTACK_AUDIO=n

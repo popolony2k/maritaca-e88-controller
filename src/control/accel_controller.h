@@ -106,8 +106,12 @@ private:
     static constexpr float PITCH_EXPO      =  0.5f;
 
     // ---- Slew rate limiter ---------------------------------------------
+#if defined(BOARD_STICKC_PLUS2)
+    static constexpr float SLEW_RATE       =  6.0f; ///< Max output change per frame — 2x AtomS3 to compensate for lower effective loop rate under BT coexistence.
+#else
     static constexpr float SLEW_RATE       =  3.0f; ///< Max output change per frame at 25 Hz.
-    static constexpr float YAW_SLEW_RATE   =  5.0f; ///< Faster ramp for yaw mode — snappier response.
+#endif
+    static constexpr float YAW_SLEW_RATE   =  4.04f; ///< Faster ramp for yaw mode — snappier response.
     static constexpr float YAW_DEAD_ZONE   =  7.0f; ///< Smaller dead zone for yaw mode (deg) — responds sooner.
 
     // ---- Throttle ------------------------------------------------------

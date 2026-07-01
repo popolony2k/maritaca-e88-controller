@@ -81,9 +81,10 @@ Supported controllers:
 - **Double-click** → calibrate → arm → fly (BT gamepad: use button A instead)
 - **Triple-click** → emergency stop, return to idle
 
-### Boot mode selection
+### Boot sequence
 
-On power-on a menu screen appears for 3 seconds.  Pressing the screen button cycles between modes; releasing the button resets the 3-second countdown.  Default is **BT GAMEPAD**.
+1. **Splash screen** — the `popolon.png` logo fills the screen for 2 seconds.
+2. **Mode selection menu** — appears for 3 seconds. Pressing the screen button cycles between modes; releasing resets the 3-second countdown. Default is **BT GAMEPAD**.
 
 ---
 
@@ -359,7 +360,7 @@ firmware target more than one M5Stack device — business logic (`comm/`,
 | Board | Environment | Chip | Status |
 | --- | --- | --- | --- |
 | **M5Stack AtomS3** | `m5stack-atoms3` | ESP32-S3 (BLE only) | Primary, fully working |
-| **M5StickC Plus2** | `m5stack-stickc-plus2` | ESP32-PICO-V3-02 (original ESP32 core, BLE+BR/EDR) | Confirmed on physical hardware: display/UI, WiFi, and iPega BLE gamepad all working. ACCEL mode (IMU tilt control) not yet verified — axis sign conventions may need re-tuning, see [m5stickcplus2.cpp](src/hal/m5stickcplus2.cpp) |
+| **M5StickC Plus2** | `m5stack-stickc-plus2` | ESP32-PICO-V3-02 (original ESP32 core, BLE+BR/EDR) | Confirmed on physical hardware: display/UI, WiFi, iPega BLE gamepad, and AccelControl/tilt all working. IMU axes require a swap+sign correction in `m5stickcplus2.cpp` — see `kImu.getAccel`. Also supports 8BitDo/Switch-mode controllers via the separate `bt-host/` firmware build (Bluepad32 + ESP-IDF native — see below). |
 
 Each board's `.cpp` is excluded from the other's build via `build_src_filter`,
 so a change to one board's HAL code cannot affect the other's binary.
@@ -371,11 +372,16 @@ so a change to one board's HAL code cannot affect the other's binary.
 ```text
 maritaca-e88-controller/
 ├── src/                        # Firmware source (see Architecture above)
+│   └── resources/              # Embedded assets (PNG images as C arrays)
+├── bt-host/           # Separate ESP-IDF-native build for Bluepad32/8BitDo
+│   ├── main/                   # ESP-IDF component: sketch.cpp, bp32_gamepad.h/.cpp
+│   └── components/             # Vendored ESP-IDF components (M5Unified, M5GFX, btstack…)
 ├── include/                    # Shared headers (currently unused)
 ├── lib/                        # Local libraries (currently unused)
 ├── test/                       # PlatformIO unit tests (placeholder)
 ├── resources/
-│   └── pcap/                   # Raw packet captures used for protocol RE
+│   ├── pcap/                   # Raw packet captures used for protocol RE
+│   └── images/                 # Source images for embedded assets
 ├── doc/
 │   └── vscode/                 # Reference copies of .vscode config files
 ├── packet-analysis-conversation.md  # Protocol reverse-engineering notes
@@ -383,6 +389,56 @@ maritaca-e88-controller/
 ├── CLAUDE.md                   # AI-assistant context and coding conventions
 └── README.md
 ```
+
+---
+
+## M5StickC Plus2 — Two Firmwares
+
+The StickC Plus2 has two completely separate firmware builds. Flash one **instead of** the other — they do not coexist:
+
+| | **Main firmware** | **bt-host** |
+| --- | --- | --- |
+| **Framework** | Arduino (`framework = arduino`) | ESP-IDF native (`framework = espidf`) |
+| **BT gamepad** | BLE HID — iPega PG-9021S (HOME+A digitizer mode) | Bluepad32 BR/EDR — 8BitDo Zero 2, Switch-mode controllers |
+| **AccelControl** | Yes | Yes |
+| **BtnA gestures** | Yes | Yes |
+| **BtnB** | `ESP.restart()` | `ESP.restart()` |
+| **Build location** | repo root (`platformio.ini`) | `bt-host/` (separate project) |
+| **Build command** | `pio run -e m5stack-stickc-plus2` | see below |
+
+Use **main firmware** when flying with the iPega or in AccelControl only.  
+Use **bt-host** when flying with an 8BitDo / Switch-mode controller.
+
+### Main firmware — build & flash
+
+```bash
+# from repo root
+pio run -e m5stack-stickc-plus2 -t upload
+```
+
+### bt-host — build & flash
+
+The bt-host build requires an isolated PlatformIO core directory to avoid
+colliding with the main firmware's platform package (both are named `espressif32`
+in PlatformIO's registry but are different forks):
+
+```bash
+cd bt-host
+
+# Build
+PLATFORMIO_CORE_DIR="$(pwd)/.piocore" \
+  GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=safe.bareRepository GIT_CONFIG_VALUE_0=all \
+  pio run
+
+# Flash (builds and uploads in one step once dependencies are cached)
+PLATFORMIO_CORE_DIR="$(pwd)/.piocore" \
+  GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=safe.bareRepository GIT_CONFIG_VALUE_0=all \
+  pio run -t upload
+```
+
+`pio run -t upload` flashes bootloader + partitions + app correctly for this build.
+See `CLAUDE.md` → *bt-host* for full build quirks, dependency isolation, and
+IMU calibration notes.
 
 ---
 
