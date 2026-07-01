@@ -166,6 +166,12 @@ void setup() {
 
 void loop() {
     kBoard.update();
+#if defined(BOARD_STICKC_PLUS2)
+    if (kButtonReset.wasReleased()) {
+        Serial.println("[Main] BtnB: restarting...");
+        ESP.restart();
+    }
+#endif
     wifi.update();
     imu.update(kImu);
 

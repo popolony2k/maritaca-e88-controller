@@ -111,7 +111,7 @@ private:
 #else
     static constexpr float SLEW_RATE       =  3.0f; ///< Max output change per frame at 25 Hz.
 #endif
-    static constexpr float YAW_SLEW_RATE   =  4.75f; ///< Faster ramp for yaw mode — snappier response.
+    static constexpr float YAW_SLEW_RATE   =  4.04f; ///< Faster ramp for yaw mode — snappier response.
     static constexpr float YAW_DEAD_ZONE   =  7.0f; ///< Smaller dead zone for yaw mode (deg) — responds sooner.
 
     // ---- Throttle ------------------------------------------------------

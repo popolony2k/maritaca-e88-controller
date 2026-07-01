@@ -694,9 +694,16 @@ half-initialized state from the earlier failure — clear
 
 ```bash
 cd bt-host
+
+# Build only
 PLATFORMIO_CORE_DIR="$(pwd)/.piocore" \
   GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=safe.bareRepository GIT_CONFIG_VALUE_0=all \
   pio run
+
+# Build + flash (works for normal code updates once dependencies are cached)
+PLATFORMIO_CORE_DIR="$(pwd)/.piocore" \
+  GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=safe.bareRepository GIT_CONFIG_VALUE_0=all \
+  pio run -t upload
 ```
 
 **Always use an isolated `PLATFORMIO_CORE_DIR`** — the pioarduino-forked platform
@@ -707,18 +714,8 @@ happened once — fixed via `pio platform uninstall espressif32 && pio platform
 install espressif32@7.0.1`. Verify the main firmware's AtomS3 *and* StickC Plus2
 environments still build after any global-cache-adjacent operation).
 
-`pio run -t upload` only flashes the app binary under `framework = espidf` — must
-flash bootloader+partitions+app together manually after any change:
-
-```bash
-esptool.py --chip esp32 --port /dev/cu.usbserial-XXXX --baud 460800 \
-  write-flash --flash-mode dio --flash-freq 40m --flash-size 4MB \
-  0x1000 .pio/build/esp32dev/bootloader.bin \
-  0x8000 .pio/build/esp32dev/partitions.bin \
-  0x10000 .pio/build/esp32dev/firmware.bin
-```
-
-`pio device monitor` fails in a sandboxed/non-TTY shell
+`pio run -t upload` handles the full flash (bootloader + partitions + app) correctly
+for this build. `pio device monitor` fails in a sandboxed/non-TTY shell
 (`termios.error: Operation not supported by device`) — read the serial port
 directly with a small pyserial script instead, explicitly setting
 `dtr=False; rts=False` before reading (the USB-serial adapter's auto-reset wiring

@@ -392,45 +392,53 @@ maritaca-e88-controller/
 
 ---
 
-## bt-host — 8BitDo / Switch-mode BT gamepad support
+## M5StickC Plus2 — Two Firmwares
 
-The AtomS3's ESP32-S3 has no Bluetooth Classic (BR/EDR) radio — Switch-mode
-controllers (8BitDo Zero 2, etc.) physically cannot connect to it. The M5StickC
-Plus2's ESP32-PICO-V3-02 has a genuine dual-mode radio, but integrating Bluepad32
-(the BR/EDR-capable HID host library) requires `framework = espidf`, which is
-incompatible with the main firmware's `framework = arduino` in a single PlatformIO
-project.
+The StickC Plus2 has two completely separate firmware builds. Flash one **instead of** the other — they do not coexist:
 
-`bt-host/` is a **separate, parallel firmware build** that runs on the
-M5StickC Plus2 instead of the main firmware. It reuses `src/comm/` and
-`src/control/` sources directly (shared, no duplication) and provides:
+| | **Main firmware** | **bt-host** |
+| --- | --- | --- |
+| **Framework** | Arduino (`framework = arduino`) | ESP-IDF native (`framework = espidf`) |
+| **BT gamepad** | BLE HID — iPega PG-9021S (HOME+A digitizer mode) | Bluepad32 BR/EDR — 8BitDo Zero 2, Switch-mode controllers |
+| **AccelControl** | Yes | Yes |
+| **BtnA gestures** | Yes | Yes |
+| **BtnB** | `ESP.restart()` | `ESP.restart()` |
+| **Build location** | repo root (`platformio.ini`) | `bt-host/` (separate project) |
+| **Build command** | `pio run -e m5stack-stickc-plus2` | see below |
 
-- 8BitDo Zero 2 (Switch mode) confirmed flying both drones
-- Mode-select screen at boot (BT GAMEPAD / ACCEL TILT, 3 s countdown)
-- AccelControl/tilt mode with IMU axis corrections for this board — all axes confirmed on real hardware (2026-07-01)
-- Full display HUD, battery level, BtnA button gestures
-- Portrait display orientation (135×240) with a logo in the lower area
-- **BtnB (right-side button)** → single press triggers `ESP.restart()` (firmware restart)
-- Board-specific `SLEW_RATE = 6.0` (vs AtomS3's 3.0) via `BOARD_STICKC_PLUS2` preprocessor conditional — compensates for BT+WiFi coexistence reducing the effective loop rate
+Use **main firmware** when flying with the iPega or in AccelControl only.  
+Use **bt-host** when flying with an 8BitDo / Switch-mode controller.
 
-Build and flash separately from `bt-host/`:
+### Main firmware — build & flash
+
+```bash
+# from repo root
+pio run -e m5stack-stickc-plus2 -t upload
+```
+
+### bt-host — build & flash
+
+The bt-host build requires an isolated PlatformIO core directory to avoid
+colliding with the main firmware's platform package (both are named `espressif32`
+in PlatformIO's registry but are different forks):
 
 ```bash
 cd bt-host
+
+# Build
 PLATFORMIO_CORE_DIR="$(pwd)/.piocore" \
   GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=safe.bareRepository GIT_CONFIG_VALUE_0=all \
   pio run
 
-# Flash all three pieces manually (pio run -t upload only flashes the app):
-esptool.py --chip esp32 --port /dev/cu.usbserial-XXXX --baud 460800 \
-  write-flash --flash-mode dio --flash-freq 40m --flash-size 4MB \
-  0x1000 .pio/build/esp32dev/bootloader.bin \
-  0x8000 .pio/build/esp32dev/partitions.bin \
-  0x10000 .pio/build/esp32dev/firmware.bin
+# Flash (builds and uploads in one step once dependencies are cached)
+PLATFORMIO_CORE_DIR="$(pwd)/.piocore" \
+  GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=safe.bareRepository GIT_CONFIG_VALUE_0=all \
+  pio run -t upload
 ```
 
-See `CLAUDE.md` → *bt-host** for full build quirks, isolation requirements,
-and IMU calibration notes.
+`pio run -t upload` flashes bootloader + partitions + app correctly for this build.
+See `CLAUDE.md` → *bt-host* for full build quirks, dependency isolation, and
+IMU calibration notes.
 
 ---
 
